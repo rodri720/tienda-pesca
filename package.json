@@ -1,0 +1,58 @@
+{
+  "name": "tienda-pesca",
+  "version": "1.0.0",
+  "description": "Sistema de gestión profesional para tienda de artículos de pesca con SKU automático y gestión de imágenes",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build-portable": "electron-builder --win portable"
+  },
+  "keywords": [
+    "pesca",
+    "inventario",
+    "electron",
+    "sqlite",
+    "sku",
+    "imágenes",
+    "gestión"
+  ],
+  "author": "Tu Nombre",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.0"
+  },
+  "build": {
+    "appId": "com.tienda.pesca.pro",
+    "productName": "Tienda de Pesca Pro",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "!src/**/*.map",
+      "!.vscode/**/*",
+      "!*.log"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico",
+      "publisherName": "Tienda de Pesca"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tienda de Pesca",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
+    }
+  }
+}
