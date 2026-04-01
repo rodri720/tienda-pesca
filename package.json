@@ -1,0 +1,66 @@
+{
+  "name": "tienda-pesca",
+  "version": "1.0.0",
+  "description": "Sistema de gestión profesional para tienda de artículos de pesca con SKU automático y gestión de imágenes",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "build": "electron-builder --win",
+    "build-portable": "electron-builder --win portable",
+    "clean": "rm -rf dist node_modules package-lock.json",
+    "rebuild": "electron-rebuild"
+  },
+  "keywords": [
+    "pesca",
+    "inventario",
+    "electron",
+    "sqlite",
+    "sku",
+    "imágenes",
+    "gestión"
+  ],
+  "author": "Tu Nombre",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "electron-builder": "^26.7.0",
+    "electron-rebuild": "^3.2.9"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.0"
+  },
+  "build": {
+    "appId": "com.tienda.pesca.pro",
+    "productName": "Tienda de Pesca Pro",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "database.js",
+      "preload.js",
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tienda de Pesca"
+    }
+  }
+}

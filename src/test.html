@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TEST PUNTO DE VENTA</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 30px;
+            background: #1e1e1e;
+            color: #00ff00;
+        }
+        button {
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 16px;
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        pre {
+            background: #000;
+            color: #00ff00;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border: 1px solid #00ff00;
+        }
+        h1 { color: white; }
+    </style>
+</head>
+<body>
+    <h1>🔧 TEST DEL SISTEMA - PUNTO DE VENTA</h1>
+    
+    <div>
+        <button onclick="test1()">1. VERIFICAR API</button>
+        <button onclick="test2()">2. OBTENER PRODUCTOS</button>
+        <button onclick="test3()">3. LISTA DE PRECIOS</button>
+        <button onclick="test4()">4. BUSCAR SKU</button>
+        <button onclick="window.api.openPuntoVenta()">5. ABRIR PUNTO DE VENTA</button>
+    </div>
+
+    <pre id="output">
+=== SISTEMA LISTO ===
+    </pre>
+
+    <script>
+        // 🔴 LOG INMEDIATO
+        console.log('🔴🔴🔴 TEST.HTML CARGADO - ' + new Date().toLocaleTimeString());
+        console.log('window.api existe?', window.api ? '✅ SI' : '❌ NO');
+        
+        const output = document.getElementById('output');
+        
+        function log(msg) {
+            const timestamp = new Date().toLocaleTimeString();
+            console.log(`[${timestamp}] ${msg}`);
+            output.innerHTML += `\n[${timestamp}] ${msg}`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        async function test1() {
+            log('🔍 TEST 1: Verificando API...');
+            
+            if (window.api) {
+                log('✅ window.api DISPONIBLE');
+                const metodos = Object.keys(window.api);
+                log(`📋 Métodos (${metodos.length}):`);
+                metodos.sort().forEach(m => log(`   - ${m}`));
+            } else {
+                log('❌ ERROR: window.api NO EXISTE');
+                log('💡 Verifica que preload.js está funcionando');
+            }
+        }
+
+        async function test2() {
+            log('🔍 TEST 2: Obteniendo productos...');
+            
+            try {
+                const productos = await window.api.getAllProducts();
+                log(`✅ ${productos.length} productos encontrados`);
+                
+                if (productos.length > 0) {
+                    log('\n📦 PRIMER PRODUCTO:');
+                    log(`ID: ${productos[0].id}`);
+                    log(`SKU: ${productos[0].sku}`);
+                    log(`Nombre: ${productos[0].nombre}`);
+                    log(`Precio: $${productos[0].precio}`);
+                    log(`Stock: ${productos[0].stock}`);
+                }
+            } catch (e) {
+                log(`❌ Error: ${e.message}`);
+            }
+        }
+
+        async function test3() {
+            log('🔍 TEST 3: Lista de precios...');
+            
+            try {
+                const precios = await window.api.getPriceList('');
+                log(`✅ ${precios.length} productos en lista de precios`);
+                
+                if (precios.length > 0) {
+                    log('\n💰 PRIMEROS 3 PRODUCTOS:');
+                    precios.slice(0, 3).forEach(p => {
+                        log(`${p.sku} - ${p.nombre} - $${p.precio} - Stock: ${p.stock}`);
+                    });
+                }
+            } catch (e) {
+                log(`❌ Error: ${e.message}`);
+            }
+        }
+
+        async function test4() {
+            const sku = prompt('Ingresa SKU a buscar:', 'ANZ-OWN0001');
+            if (!sku) return;
+            
+            log(`🔍 TEST 4: Buscando SKU "${sku}"...`);
+            
+            try {
+                const resultados = await window.api.searchProducts(sku);
+                log(`✅ ${resultados.length} resultados`);
+                
+                if (resultados.length > 0) {
+                    log('\n🎣 PRODUCTO ENCONTRADO:');
+                    log(JSON.stringify(resultados[0], null, 2));
+                } else {
+                    log('❌ Producto no encontrado');
+                    
+                    // Mostrar productos disponibles como ayuda
+                    const todos = await window.api.getPriceList('');
+                    if (todos.length > 0) {
+                        log('\n📋 SKUs disponibles:');
+                        todos.slice(0, 5).forEach(p => log(`   ${p.sku}`));
+                    }
+                }
+            } catch (e) {
+                log(`❌ Error: ${e.message}`);
+            }
+        }
+
+        // Ejecutar test1 automáticamente
+        setTimeout(test1, 1000);
+    </script>
+</body>
+</html>
