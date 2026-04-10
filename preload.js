@@ -28,5 +28,10 @@ contextBridge.exposeInMainWorld('api', {
   
   // ============ GASTOS ============
   createGasto: (gasto) => ipcRenderer.invoke('db:createGasto', gasto),
-  getTodayGastos: () => ipcRenderer.invoke('db:getTodayGastos')
+  getTodayGastos: () => ipcRenderer.invoke('db:getTodayGastos'),
+  
+  // ============ VENTAS ============
+  createVenta: (venta) => ipcRenderer.invoke('db:createVenta', venta),
+  getVentasDelDia: () => ipcRenderer.invoke('db:getVentasDelDia'),
+  getGastosDelDia: () => ipcRenderer.invoke('db:getGastosDelDia')
 });

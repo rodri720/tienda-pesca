@@ -1,11 +1,8 @@
 // punto-venta.js - Versión completa con Caja, Margen, Historial de Gastos y Proveedores
-// CORREGIDO: Edición de productos (ya no crea uno nuevo al editar)
-// AGREGADO: Campo stock_apertura persistente en base de datos
-// AGREGADO: Guardado de cierres en base de datos y botón de historial de cierres
-// AGREGADO: Historial de Caja independiente (30 días)
-// MODIFICADO: Cierre de caja ya no descuenta saldo (mantiene acumulado)
-// MODIFICADO: Nueva categoría "Aporte capital (ingreso)" en gastos que se registra como ingreso en caja
-// NUEVO: Ingresos y retiros manuales de caja con botones independientes
+// MODIFICADO PARA GUARDAR DATOS CRÍTICOS EN SQLITE (ventas, gastos, cierres)
+// Se mantiene localStorage como fallback
+// CORREGIDO: generarResumenCierreCaja ahora prioriza localStorage para mostrar vacío después del cierre
+// CORREGIDO: registrarCierreCaja con logs de verificación y alerta en caso de error en SQLite
 
 class PuntoVentaApp {
     constructor() {
@@ -1861,7 +1858,7 @@ class PuntoVentaApp {
     }
 
     // ==================== FUNCIONES DE GASTOS ====================
-    guardarGasto(e) {
+    async guardarGasto(e) {
         e.preventDefault();
         
         const tipo = document.getElementById('gasto-tipo')?.value;
@@ -1896,6 +1893,16 @@ class PuntoVentaApp {
             const gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
             gastosDelDia.push(gasto);
             localStorage.setItem('gastosDelDia', JSON.stringify(gastosDelDia));
+            
+            // --- GUARDAR EN SQLITE ---
+            if (window.api && window.api.createGasto) {
+                try {
+                    await window.api.createGasto(gasto);
+                } catch (error) {
+                    console.error('Error guardando gasto en SQLite:', error);
+                }
+            }
+            // -------------------------
             
             // Si la categoría es "Aporte capital (ingreso)", registrar como ingreso en lugar de egreso
             if (categoria === "Aporte capital (ingreso)") {
@@ -2121,8 +2128,8 @@ class PuntoVentaApp {
                                 <td colspan="3" style="padding: 12px; text-align: right; border-top: 2px solid #f56565;">TOTAL GENERAL:</td>
                                 <td style="padding: 12px; text-align: right; border-top: 2px solid #f56565; color: #f56565; font-size: 1.1rem;">
                                     $${totalGastos.toFixed(2)}
-                                  </td>
-                              </tr>
+                                   </td>
+                               </tr>
                         </tfoot>
                     </table>
                 </div>
@@ -2210,206 +2217,177 @@ class PuntoVentaApp {
         this.generarResumenCierreCaja();
     }
 
-    generarResumenCierreCaja() {
-        const ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
-        const gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
+    // ==================== MODIFICACIÓN IMPORTANTE ====================
+    // Ahora prioriza localStorage para que el resumen se muestre vacío después del cierre
+    async generarResumenCierreCaja() {
+    // Solo usar localStorage para el resumen del día actual (se limpia al cerrar)
+    let ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
+    let gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
+
+    // Si no hay datos, mostrar mensaje de que no hay ventas
+    const ventasPorMetodo = {};
+    ventasDelDia.forEach(venta => {
+        const totalVenta = venta.total_final !== undefined ? venta.total_final : venta.total;
+        const totalNeto = venta.total_neto !== undefined ? venta.total_neto : (totalVenta - (venta.comision_monto || 0));
+        const comisionMonto = venta.comision_monto || 0;
         
-        const ventasPorMetodo = {};
-        ventasDelDia.forEach(venta => {
-            // Usar total_final si existe, sino total (para compatibilidad)
-            const totalVenta = venta.total_final !== undefined ? venta.total_final : venta.total;
-            const totalNeto = venta.total_neto !== undefined ? venta.total_neto : (totalVenta - (venta.comision_monto || 0));
-            const comisionMonto = venta.comision_monto || 0;
-            
-            if (!ventasPorMetodo[venta.metodo_pago]) {
-                ventasPorMetodo[venta.metodo_pago] = {
-                    total: 0,
-                    neto: 0,
-                    comisiones: 0,
-                    cantidad: 0
-                };
-            }
-            
-            ventasPorMetodo[venta.metodo_pago].total += totalVenta;
-            ventasPorMetodo[venta.metodo_pago].neto += totalNeto;
-            ventasPorMetodo[venta.metodo_pago].comisiones += comisionMonto;
-            ventasPorMetodo[venta.metodo_pago].cantidad += 1;
-        });
-        
-        const totalVentas = ventasDelDia.reduce((sum, venta) => sum + (venta.total_final !== undefined ? venta.total_final : venta.total), 0);
-        const totalComisiones = ventasDelDia.reduce((sum, venta) => sum + (venta.comision_monto || 0), 0);
-        const totalNeto = ventasDelDia.reduce((sum, venta) => sum + (venta.total_neto !== undefined ? venta.total_neto : ((venta.total_final !== undefined ? venta.total_final : venta.total) - (venta.comision_monto || 0))), 0);
-        const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + gasto.monto, 0);
-        const totalFinal = totalNeto - totalGastos;
-        
-        let html = `
-            <div style="margin-bottom: 20px;">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <h4 style="color: var(--dark); margin-bottom: 5px;">Resumen del Día</h4>
-                    <div style="color: #718096; font-size: 1.1rem;">${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
-                </div>
-                
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-size: 1.1rem;">Ventas del día:</span>
-                        <span style="font-size: 1.5rem; font-weight: 700;">$${totalVentas.toFixed(2)}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-size: 1.1rem;">Total comisiones:</span>
-                        <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalComisiones.toFixed(2)}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-size: 1.1rem;">Total gastos:</span>
-                        <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalGastos.toFixed(2)}</span>
-                    </div>
-                    <div style="border-top: 2px solid rgba(255,255,255,0.3); margin: 15px 0 10px; padding-top: 15px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 1.2rem; font-weight: 600;">NETO A DEPOSITAR:</span>
-                            <span style="font-size: 1.8rem; font-weight: 700; color: #c6f6d5;">$${totalFinal.toFixed(2)}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <h5 style="color: var(--dark); margin: 20px 0 15px; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-chart-pie"></i> Ventas por Método de Pago
-                </h5>
-        `;
-        
-        if (Object.keys(ventasPorMetodo).length === 0) {
-            html += `<p style="text-align: center; padding: 20px; color: #718096;">No hay ventas registradas hoy</p>`;
-        } else {
-            Object.keys(ventasPorMetodo).forEach(metodo => {
-                const datos = ventasPorMetodo[metodo];
-                const porcentaje = totalVentas > 0 ? ((datos.total / totalVentas) * 100).toFixed(1) : '0.0';
-                
-                html += `
-                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <div>
-                                <strong style="text-transform: capitalize; font-size: 1.1rem;">${metodo}</strong>
-                                <span style="background: #e2e8f0; padding: 3px 8px; border-radius: 4px; margin-left: 10px; font-size: 0.85rem;">
-                                    ${datos.cantidad} venta${datos.cantidad !== 1 ? 's' : ''}
-                                </span>
-                            </div>
-                            <span style="font-weight: 700; color: var(--primary); font-size: 1.2rem;">$${datos.total.toFixed(2)}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
-                            <span style="color: #718096;">Comisión: $${datos.comisiones.toFixed(2)}</span>
-                            <span style="color: #2d3748;">Neto: $${datos.neto.toFixed(2)}</span>
-                            <span style="color: #48bb78;">${porcentaje}%</span>
-                        </div>
-                    </div>
-                `;
-            });
+        if (!ventasPorMetodo[venta.metodo_pago]) {
+            ventasPorMetodo[venta.metodo_pago] = {
+                total: 0,
+                neto: 0,
+                comisiones: 0,
+                cantidad: 0
+            };
         }
         
-        if (gastosDelDia.length > 0) {
-            html += `<h5 style="color: var(--dark); margin: 25px 0 15px; display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-receipt"></i> Gastos del Día (${gastosDelDia.length})
-                    </h5>
-                    <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">`;
+        ventasPorMetodo[venta.metodo_pago].total += totalVenta;
+        ventasPorMetodo[venta.metodo_pago].neto += totalNeto;
+        ventasPorMetodo[venta.metodo_pago].comisiones += comisionMonto;
+        ventasPorMetodo[venta.metodo_pago].cantidad += 1;
+    });
+    
+    const totalVentas = ventasDelDia.reduce((sum, venta) => sum + (venta.total_final !== undefined ? venta.total_final : venta.total), 0);
+    const totalComisiones = ventasDelDia.reduce((sum, venta) => sum + (venta.comision_monto || 0), 0);
+    const totalNeto = ventasDelDia.reduce((sum, venta) => sum + (venta.total_neto !== undefined ? venta.total_neto : ((venta.total_final !== undefined ? venta.total_final : venta.total) - (venta.comision_monto || 0))), 0);
+    const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + gasto.monto, 0);
+    const totalFinal = totalNeto - totalGastos;
+    
+    let html = `
+        <div style="margin-bottom: 20px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h4 style="color: var(--dark); margin-bottom: 5px;">Resumen del Día</h4>
+                <div style="color: #718096; font-size: 1.1rem;">${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+            </div>
             
-            gastosDelDia.forEach((gasto, index) => {
-                html += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: ${index < gastosDelDia.length - 1 ? '1px solid #e2e8f0' : 'none'};">
-                        <div>
-                            <div style="font-weight: 600;">${gasto.descripcion}</div>
-                            <div style="font-size: 0.85rem; color: #718096;">${gasto.categoria} • ${gasto.metodo_pago}</div>
-                        </div>
-                        <div style="color: #f56565; font-weight: 700; font-size: 1.1rem;">-$${gasto.monto.toFixed(2)}</div>
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 1.1rem;">Ventas del día:</span>
+                    <span style="font-size: 1.5rem; font-weight: 700;">$${totalVentas.toFixed(2)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 1.1rem;">Total comisiones:</span>
+                    <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalComisiones.toFixed(2)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 1.1rem;">Total gastos:</span>
+                    <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalGastos.toFixed(2)}</span>
+                </div>
+                <div style="border-top: 2px solid rgba(255,255,255,0.3); margin: 15px 0 10px; padding-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 1.2rem; font-weight: 600;">NETO A DEPOSITAR:</span>
+                        <span style="font-size: 1.8rem; font-weight: 700; color: #c6f6d5;">$${totalFinal.toFixed(2)}</span>
                     </div>
-                `;
-            });
-            
-            html += `</div>`;
-        }
-        
-        html += `
-            <div style="margin-top: 25px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #48bb78;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span>Total ventas (neto):</span>
-                    <span style="font-weight: 600;">$${totalNeto.toFixed(2)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span>Total gastos:</span>
-                    <span style="font-weight: 600; color: #f56565;">-$${totalGastos.toFixed(2)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 2px dashed #cbd5e0;">
-                    <span style="font-weight: 700; font-size: 1.1rem;">RESULTADO FINAL:</span>
-                    <span style="font-weight: 700; font-size: 1.3rem; color: ${totalFinal >= 0 ? '#48bb78' : '#f56565'};">
-                        $${totalFinal.toFixed(2)}
-                    </span>
                 </div>
             </div>
-        `;
-        
-        const resumenCierre = document.getElementById('resumen-cierre-caja');
-        if (resumenCierre) {
-            resumenCierre.innerHTML = html;
-        }
+            
+            <h5 style="color: var(--dark); margin: 20px 0 15px; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-chart-pie"></i> Ventas por Método de Pago
+            </h5>
+    `;
+    
+    if (Object.keys(ventasPorMetodo).length === 0) {
+        html += `<p style="text-align: center; padding: 20px; color: #718096;">No hay ventas registradas hoy</p>`;
+    } else {
+        Object.keys(ventasPorMetodo).forEach(metodo => {
+            const datos = ventasPorMetodo[metodo];
+            const porcentaje = totalVentas > 0 ? ((datos.total / totalVentas) * 100).toFixed(1) : '0.0';
+            
+            html += `
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div>
+                            <strong style="text-transform: capitalize; font-size: 1.1rem;">${metodo}</strong>
+                            <span style="background: #e2e8f0; padding: 3px 8px; border-radius: 4px; margin-left: 10px; font-size: 0.85rem;">
+                                ${datos.cantidad} venta${datos.cantidad !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        <span style="font-weight: 700; color: var(--primary); font-size: 1.2rem;">$${datos.total.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+                        <span style="color: #718096;">Comisión: $${datos.comisiones.toFixed(2)}</span>
+                        <span style="color: #2d3748;">Neto: $${datos.neto.toFixed(2)}</span>
+                        <span style="color: #48bb78;">${porcentaje}%</span>
+                    </div>
+                </div>
+            `;
+        });
     }
-
-    imprimirCierreCaja() {
-        const resumenCierre = document.getElementById('resumen-cierre-caja');
-        if (!resumenCierre) return;
+    
+    if (gastosDelDia.length > 0) {
+        html += `<h5 style="color: var(--dark); margin: 25px 0 15px; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-receipt"></i> Gastos del Día (${gastosDelDia.length})
+                </h5>
+                <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">`;
         
-        const contenido = resumenCierre.innerHTML;
-        const fecha = new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        gastosDelDia.forEach((gasto, index) => {
+            html += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: ${index < gastosDelDia.length - 1 ? '1px solid #e2e8f0' : 'none'};">
+                    <div>
+                        <div style="font-weight: 600;">${gasto.descripcion}</div>
+                        <div style="font-size: 0.85rem; color: #718096;">${gasto.categoria} • ${gasto.metodo_pago}</div>
+                    </div>
+                    <div style="color: #f56565; font-weight: 700; font-size: 1.1rem;">-$${gasto.monto.toFixed(2)}</div>
+                </div>
+            `;
+        });
         
-        const ventanaImpresion = window.open('', '_blank');
-        if (ventanaImpresion) {
-            ventanaImpresion.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Cierre de Caja - ${fecha}</title>
-                    <style>
-                        body { 
-                            font-family: 'Segoe UI', Arial, sans-serif; 
-                            margin: 20px; 
-                            padding: 20px;
-                            background: white;
-                        }
-                        h3 { 
-                            color: #1a8c8a; 
-                            margin-bottom: 5px;
-                        }
-                        .fecha {
-                            color: #718096;
-                            margin-bottom: 30px;
-                        }
-                        @media print {
-                            @page { 
-                                margin: 10mm; 
-                            }
-                            body { 
-                                margin: 0; 
-                                padding: 0; 
-                            }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <h2 style="color: #1a8c8a; text-align: center;">CIERRE DE CAJA</h2>
-                    <h3 style="text-align: center;">Tienda de Pesca</h3>
-                    <p style="text-align: center; color: #718096; margin-bottom: 30px;">${fecha}</p>
-                    ${contenido}
-                    <p style="text-align: center; margin-top: 40px; color: #718096; font-size: 0.9rem;">
-                        Este es un documento oficial de cierre de caja<br>
-                        Generado el ${new Date().toLocaleString('es-ES')}
-                    </p>
-                </body>
-                </html>
-            `);
-            ventanaImpresion.document.close();
-            ventanaImpresion.focus();
-            ventanaImpresion.print();
-        }
+        html += `</div>`;
     }
-
+    
+    html += `
+        <div style="margin-top: 25px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #48bb78;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span>Total ventas (neto):</span>
+                <span style="font-weight: 600;">$${totalNeto.toFixed(2)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span>Total gastos:</span>
+                <span style="font-weight: 600; color: #f56565;">-$${totalGastos.toFixed(2)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 2px dashed #cbd5e0;">
+                <span style="font-weight: 700; font-size: 1.1rem;">RESULTADO FINAL:</span>
+                <span style="font-weight: 700; font-size: 1.3rem; color: ${totalFinal >= 0 ? '#48bb78' : '#f56565'};">
+                    $${totalFinal.toFixed(2)}
+                </span>
+            </div>
+        </div>
+    `;
+    
+    const resumenCierre = document.getElementById('resumen-cierre-caja');
+    if (resumenCierre) {
+        resumenCierre.innerHTML = html;
+    }
+}
     // ==================== CIERRE DE CAJA MODIFICADO: NO DESCUENTA SALDO ====================
     async registrarCierreCaja() {
         if (confirm('¿Registrar cierre de caja y limpiar datos del día?')) {
+            // --- Obtener ventas y gastos del día desde SQLite (o localStorage como fallback) ---
+            let ventasDelDia = [];
+            let gastosDelDia = [];
+
+            if (window.api && window.api.getVentasDelDia) {
+                try {
+                    ventasDelDia = await window.api.getVentasDelDia();
+                } catch (error) {
+                    console.error('Error obteniendo ventas de SQLite:', error);
+                }
+            }
+            if (ventasDelDia.length === 0) {
+                ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
+            }
+
+            if (window.api && window.api.getGastosDelDia) {
+                try {
+                    gastosDelDia = await window.api.getGastosDelDia();
+                } catch (error) {
+                    console.error('Error obteniendo gastos de SQLite:', error);
+                }
+            }
+            if (gastosDelDia.length === 0) {
+                gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
+            }
+            // ---------------------------------------------------------------------------------
+
             // --- 1. Guardar el resumen diario de caja (historialCaja) ---
             let cajaDiaria = JSON.parse(localStorage.getItem('cajaDiaria'));
             const hoy = new Date().toISOString().split('T')[0];
@@ -2431,8 +2409,6 @@ class PuntoVentaApp {
     
             // --- 2. Guardar el cierre contable (resumen) ---
             const cierres = JSON.parse(localStorage.getItem('cierresHistoricos')) || [];
-            const ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
-            const gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
             
             // Mover gastos al histórico de gastos
             const gastosHistoricos = JSON.parse(localStorage.getItem('gastosHistoricos')) || [];
@@ -2459,12 +2435,15 @@ class PuntoVentaApp {
             
             cierres.push(cierre);
             localStorage.setItem('cierresHistoricos', JSON.stringify(cierres));
+            console.log('✅ Cierre guardado en localStorage', cierre);
             
             if (window.api && window.api.createCierre) {
                 try {
                     await window.api.createCierre(cierre);
+                    console.log('✅ Cierre guardado en SQLite');
                 } catch (error) {
-                    console.error("Error al guardar cierre en BD:", error);
+                    console.error('Error al guardar cierre en SQLite:', error);
+                    alert('⚠️ El cierre se guardó en localStorage pero hubo un problema con la base de datos. Revise la consola.');
                 }
             }
             
@@ -3992,7 +3971,7 @@ class PuntoVentaApp {
     }
 
     // ==================== FINALIZAR VENTA ====================
-    finalizarVenta() {
+    async finalizarVenta() {
         // Validar que haya productos en el carrito
         if (this.carrito.length === 0) {
             this.mostrarError('No hay productos en el carrito');
@@ -4077,9 +4056,19 @@ class PuntoVentaApp {
         localStorage.setItem('ventasDelDia', JSON.stringify(ventasDelDia));
 
         this.guardarVentaEnHistorial(venta);
+        
+        // --- GUARDAR EN SQLITE ---
+        if (window.api && window.api.createVenta) {
+            try {
+                await window.api.createVenta(venta);
+            } catch (error) {
+                console.error('Error guardando venta en SQLite:', error);
+            }
+        }
+        // -------------------------
 
         // Actualizar stock (restar cantidades)
-        this.actualizarStockProductos('restar', this.carrito);
+        await this.actualizarStockProductos('restar', this.carrito);
 
         // Agregar ingreso neto a la caja
         this.agregarIngreso(totalNeto, `Venta #${venta.id}`, metodo, venta.id.toString());

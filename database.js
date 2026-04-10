@@ -150,7 +150,7 @@ class Database {
                             if (err) console.warn("Error creando tabla cierres:", err.message);
                         });
                         
-                        // ========== NUEVA TABLA: caja_diaria ==========
+                        // Tabla caja_diaria
                         this.db.run(`
                             CREATE TABLE IF NOT EXISTS caja_diaria (
                                 id TEXT PRIMARY KEY,
@@ -164,6 +164,27 @@ class Database {
                             )
                         `, (err) => {
                             if (err) console.warn("Error creando tabla caja_diaria:", err.message);
+                        });
+                        
+                        // ========== NUEVA TABLA: ventas ==========
+                        this.db.run(`
+                            CREATE TABLE IF NOT EXISTS ventas (
+                                id TEXT PRIMARY KEY,
+                                fecha DATETIME NOT NULL,
+                                productos TEXT NOT NULL,
+                                total REAL NOT NULL,
+                                total_neto REAL,
+                                comision_porcentaje REAL,
+                                comision_monto REAL,
+                                metodo_pago TEXT NOT NULL,
+                                descuento_aplicado REAL,
+                                recargo_aplicado REAL,
+                                monto_recibido REAL,
+                                vuelto REAL,
+                                fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+                            )
+                        `, (err) => {
+                            if (err) console.warn("Error creando tabla ventas:", err.message);
                         });
                         
                         this.verificarCategorias();
@@ -521,7 +542,8 @@ class Database {
     // ============ GASTOS ============
     async createGasto(gasto) {
         return new Promise((resolve, reject) => {
-            const id = uuidv4();
+            // Respetar el ID que viene del front-end (si existe)
+            const id = gasto.id || uuidv4();
             
             const tipo = (gasto.tipo || 'gasto').toLowerCase().trim();
             const categoria = (gasto.categoria || 'otros').toLowerCase().trim();
@@ -532,6 +554,8 @@ class Database {
             const comprobante = (gasto.comprobante || '').trim();
             const observaciones = (gasto.observaciones || '').trim();
             const usuario = (gasto.usuario || 'sistema').trim();
+            // Usar la fecha que viene del front-end, o la actual si no viene
+            const fecha = gasto.fecha || new Date().toISOString();
 
             if (!categoria || categoria === '') {
                 reject(new Error('La categoría no puede estar vacía'));
@@ -540,8 +564,8 @@ class Database {
 
             const query = `
                 INSERT INTO gastos 
-                (id, tipo, categoria, descripcion, monto, metodo_pago, proveedor, comprobante, observaciones, usuario)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, tipo, categoria, descripcion, monto, metodo_pago, proveedor, comprobante, observaciones, usuario, fecha)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
             const params = [
@@ -554,7 +578,8 @@ class Database {
                 proveedor,
                 comprobante,
                 observaciones,
-                usuario
+                usuario,
+                fecha
             ];
 
             this.db.run(query, params, function(err) {
@@ -574,7 +599,7 @@ class Database {
                     comprobante, 
                     observaciones, 
                     usuario,
-                    fecha: new Date().toISOString() 
+                    fecha: fecha
                 });
             });
         });
@@ -688,7 +713,8 @@ class Database {
     // ============ CIERRES ============
     async createCierre(cierre) {
         return new Promise((resolve, reject) => {
-            const id = uuidv4();
+            // Respetar el ID que viene del front-end (si existe)
+            const id = cierre.id || uuidv4();
             const ventasPorMetodoJSON = JSON.stringify(cierre.ventasPorMetodo || {});
             
             this.db.run(
@@ -816,10 +842,75 @@ class Database {
         });
     }
 
+    // ============ VENTAS ============
+    async createVenta(venta) {
+        return new Promise((resolve, reject) => {
+            // Respetar el ID que viene del front-end (si existe)
+            const id = venta.id || uuidv4();
+            const productosJSON = JSON.stringify(venta.productos);
+            this.db.run(
+                `INSERT INTO ventas 
+                 (id, fecha, productos, total, total_neto, comision_porcentaje, comision_monto, metodo_pago, descuento_aplicado, recargo_aplicado, monto_recibido, vuelto)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    id,
+                    venta.fecha,
+                    productosJSON,
+                    venta.total,
+                    venta.total_neto || venta.total,
+                    venta.comision_porcentaje || 0,
+                    venta.comision_monto || 0,
+                    venta.metodo_pago,
+                    venta.descuento_aplicado || 0,
+                    venta.recargo_aplicado || 0,
+                    venta.monto_recibido || null,
+                    venta.vuelto || null
+                ],
+                function(err) {
+                    if (err) reject(err);
+                    else resolve({ id, ...venta });
+                }
+            );
+        });
+    }
+
+    async getVentasByDate(fecha) {
+        return new Promise((resolve) => {
+            // Usar DATE() para comparar solo la parte de fecha, sin importar la zona horaria
+            this.db.all(
+                `SELECT * FROM ventas WHERE DATE(fecha) = DATE(?) ORDER BY fecha ASC`,
+                [fecha],
+                (err, rows) => {
+                    if (err) {
+                        resolve([]);
+                    } else {
+                        rows.forEach(row => {
+                            try {
+                                row.productos = JSON.parse(row.productos);
+                            } catch(e) { row.productos = []; }
+                        });
+                        resolve(rows);
+                    }
+                }
+            );
+        });
+    }
+
+    async getVentasDelDia() {
+        const hoy = new Date().toISOString().split('T')[0];
+        return this.getVentasByDate(hoy);
+    }
+
+    // Alias para mantener consistencia (ya existe getTodayGastos)
+    async getGastosDelDia() {
+        return this.getTodayGastos();
+    }
+
     close() {
         if (this.db) {
             this.db.close();
         }
     }
-} 
+}
+
 module.exports = Database;
