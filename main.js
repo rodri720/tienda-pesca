@@ -16,24 +16,19 @@ const dbPath = path.join(userDataPath, 'tienda-pesca.db');
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    // Ya hay una instancia en ejecución, salimos inmediatamente
     app.quit();
 } else {
-    // Escuchamos cuando se intente abrir una segunda instancia
     app.on('second-instance', (event, commandLine, workingDirectory) => {
-        // Enfocar la ventana principal si existe
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
         }
-        // También enfocar la ventana de punto de venta si está abierta
         if (puntoVentaWindow && !puntoVentaWindow.isDestroyed()) {
             if (puntoVentaWindow.isMinimized()) puntoVentaWindow.restore();
             puntoVentaWindow.focus();
         }
     });
 
-    // Continuamos con la inicialización normal
     app.whenReady().then(async () => {
         try {
             db = new Database(dbPath);
@@ -54,7 +49,6 @@ if (!gotTheLock) {
 
 // ============ VENTANA PRINCIPAL ============
 function createMainWindow() {
-    // Verificar que el icono existe antes de usarlo
     const iconPath = path.join(__dirname, 'assets', 'icon.ico');
     const icon = fsSync.existsSync(iconPath) ? iconPath : undefined;
 
@@ -66,7 +60,7 @@ function createMainWindow() {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
-            devTools: true // Habilita la capacidad, no abre automáticamente
+            devTools: true
         },
         show: false,
         backgroundColor: '#f0f2f5'
@@ -76,14 +70,12 @@ function createMainWindow() {
     
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
-        // No abrir DevTools automáticamente
     });
 
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
 
-    // Limpiar caché al iniciar
     mainWindow.webContents.session.clearCache().catch(() => {});
 
     return mainWindow;
@@ -130,20 +122,15 @@ function createPuntoVentaWindow() {
         });
 
         puntoVentaWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-            // Error silencioso
+            // Silencioso
         });
 
         puntoVentaWindow.on('closed', () => {
             puntoVentaWindow = null;
         });
 
-        puntoVentaWindow.on('unresponsive', () => {
-            // Silencioso
-        });
-
-        puntoVentaWindow.on('responsive', () => {
-            // Silencioso
-        });
+        puntoVentaWindow.on('unresponsive', () => {});
+        puntoVentaWindow.on('responsive', () => {});
 
         return puntoVentaWindow;
         
@@ -204,102 +191,140 @@ function createMenu() {
 function setupIpcHandlers() {
     if (!db) return;
 
-    // ============ PRODUCTOS ============
+    // ---------- PRODUCTOS ----------
     ipcMain.handle('db:getAllProducts', async () => {
-        try { return await db.getAllProducts(); } 
-        catch { return []; }
+        try { return await db.getAllProducts(); } catch { return []; }
     });
-
     ipcMain.handle('db:getProductById', async (e, id) => {
-        try { return await db.getProductById(id); } 
-        catch { return null; }
+        try { return await db.getProductById(id); } catch { return null; }
     });
-
     ipcMain.handle('db:createProduct', async (e, producto) => {
-        try { return await db.createProduct(producto); } 
-        catch (e) { throw e; }
+        try { return await db.createProduct(producto); } catch (e) { throw e; }
     });
-
     ipcMain.handle('db:updateProduct', async (e, id, producto) => {
-        try { return await db.updateProduct(id, producto); } 
-        catch (e) { throw e; }
+        try { return await db.updateProduct(id, producto); } catch (e) { throw e; }
     });
-
     ipcMain.handle('db:deleteProduct', async (e, id) => {
-        try { return await db.deleteProduct(id); } 
-        catch (e) { throw e; }
+        try { return await db.deleteProduct(id); } catch (e) { throw e; }
     });
-
     ipcMain.handle('db:searchProducts', async (e, query) => {
-        try { return await db.searchProducts(query); } 
-        catch { return []; }
+        try { return await db.searchProducts(query); } catch { return []; }
     });
 
-    // ============ CATEGORÍAS ============
+    // ---------- CATEGORÍAS ----------
     ipcMain.handle('db:getCategories', async () => {
-        try { return await db.getCategories(); } 
-        catch { return []; }
+        try { return await db.getCategories(); } catch { return []; }
     });
 
-    // ============ SKU ============
+    // ---------- SKU ----------
     ipcMain.handle('db:getNextSKU', async (e, categoria, marca) => {
-        try { return await db.getNextSKU(categoria, marca); } 
-        catch { return 'GEN-0001'; }
+        try { return await db.getNextSKU(categoria, marca); } catch { return 'GEN-0001'; }
     });
 
-    // ============ ESTADÍSTICAS ============
+    // ---------- ESTADÍSTICAS ----------
     ipcMain.handle('db:getStats', async () => {
-        try { return await db.getStatistics(); } 
-        catch { return db.getDefaultStats(); }
+        try { return await db.getStatistics(); } catch { return db.getDefaultStats(); }
+    });
+    ipcMain.handle('db:getStatsWithGastos', async () => {
+        try { return await db.getStatisticsWithGastos(); } catch { return db.getDefaultStats(); }
     });
 
-    // ============ STOCK ============
+    // ---------- STOCK ----------
     ipcMain.handle('db:updateStock', async (e, id, cantidad, operacion) => {
-        try { return await db.updateStock(id, cantidad, operacion); } 
-        catch (e) { throw e; }
+        try { return await db.updateStock(id, cantidad, operacion); } catch (e) { throw e; }
     });
-
     ipcMain.handle('db:getLowStock', async () => {
-        try { return await db.getLowStockProducts(); } 
-        catch { return []; }
+        try { return await db.getLowStockProducts(); } catch { return []; }
     });
 
-    // ============ PUNTO DE VENTA ============
+    // ---------- PUNTO DE VENTA ----------
     ipcMain.handle('app:openPuntoVenta', async () => {
         const window = createPuntoVentaWindow();
         return { success: window !== null };
     });
-
     ipcMain.handle('db:getPriceList', async (e, search) => {
-        try { return await db.getPriceList(search); } 
-        catch { return []; }
+        try { return await db.getPriceList(search); } catch { return []; }
     });
 
-    // ============ GASTOS ============
+    // ---------- GASTOS ----------
     ipcMain.handle('db:createGasto', async (e, gasto) => {
-        try { return await db.createGasto(gasto); } 
-        catch (e) { throw e; }
+        try { return await db.createGasto(gasto); } catch (e) { throw e; }
     });
-
     ipcMain.handle('db:getTodayGastos', async () => {
-        try { return await db.getTodayGastos(); } 
-        catch { return []; }
+        try { return await db.getTodayGastos(); } catch { return []; }
     });
-
-    // ============ VENTAS (NUEVOS HANDLERS) ============
-    ipcMain.handle('db:createVenta', async (e, venta) => {
-        try { return await db.createVenta(venta); } 
-        catch (e) { throw e; }
-    });
-
-    ipcMain.handle('db:getVentasDelDia', async () => {
-        try { return await db.getVentasDelDia(); } 
-        catch { return []; }
-    });
-
     ipcMain.handle('db:getGastosDelDia', async () => {
-        try { return await db.getGastosDelDia(); } 
-        catch { return []; }
+        try { return await db.getTodayGastos(); } catch { return []; }
+    });
+    ipcMain.handle('db:getGastosByDate', async (e, fecha) => {
+        try { return await db.getGastosByDate(fecha); } catch { return []; }
+    });
+    ipcMain.handle('db:getGastosSummary', async (e, fecha) => {
+        try { return await db.getGastosSummary(fecha); } catch { return []; }
+    });
+    ipcMain.handle('db:deleteGasto', async (e, id) => {
+        try { return await db.deleteGasto(id); } catch (e) { throw e; }
+    });
+
+    // ---------- VENTAS ----------
+    ipcMain.handle('db:createVenta', async (e, venta) => {
+        try { return await db.createVenta(venta); } catch (e) { throw e; }
+    });
+    ipcMain.handle('db:getVentasDelDia', async () => {
+        try { return await db.getVentasDelDia(); } catch { return []; }
+    });
+    ipcMain.handle('db:getVentasByDate', async (e, fecha) => {
+        try { return await db.getVentasByDate(fecha); } catch { return []; }
+    });
+
+    // ---------- CIERRES ----------
+    ipcMain.handle('db:createCierre', async (e, cierre) => {
+        try { return await db.createCierre(cierre); } catch (e) { throw e; }
+    });
+    ipcMain.handle('db:getCierres', async (e, limit = 100) => {
+        try { return await db.getCierres(limit); } catch { return []; }
+    });
+
+    // ---------- CAJA DIARIA ----------
+    ipcMain.handle('db:saveCajaDiaria', async (e, resumen) => {
+        try { return await db.saveCajaDiaria(resumen); } catch (e) { throw e; }
+    });
+    ipcMain.handle('db:getCajaDiaria', async (e, fecha) => {
+        try { return await db.getCajaDiaria(fecha); } catch { return null; }
+    });
+    ipcMain.handle('db:getHistorialCaja', async (e, limit = 100) => {
+        try { return await db.getHistorialCaja(limit); } catch { return []; }
+    });
+
+    // ---------- PROVEEDORES ----------
+    ipcMain.handle('db:getAllProveedores', async () => {
+        try { return await db.getAllProveedores(); } catch { return []; }
+    });
+    ipcMain.handle('db:getProveedorById', async (e, id) => {
+        try { return await db.getProveedorById(id); } catch { return null; }
+    });
+    ipcMain.handle('db:createProveedor', async (e, proveedor) => {
+        try { return await db.createProveedor(proveedor); } catch (e) { throw e; }
+    });
+    ipcMain.handle('db:updateProveedor', async (e, id, proveedor) => {
+        try { return await db.updateProveedor(id, proveedor); } catch (e) { throw e; }
+    });
+    ipcMain.handle('db:deleteProveedor', async (e, id) => {
+        try { return await db.deleteProveedor(id); } catch (e) { throw e; }
+    });
+
+    // ---------- PAGOS A PROVEEDORES ----------
+    ipcMain.handle('db:getAllPagosProveedores', async () => {
+        try { return await db.getAllPagosProveedores(); } catch { return []; }
+    });
+    ipcMain.handle('db:getPagosByProveedor', async (e, proveedorId) => {
+        try { return await db.getPagosByProveedor(proveedorId); } catch { return []; }
+    });
+    ipcMain.handle('db:createPagoProveedor', async (e, pago) => {
+        try { return await db.createPagoProveedor(pago); } catch (e) { throw e; }
+    });
+    ipcMain.handle('db:deletePagoProveedor', async (e, id) => {
+        try { return await db.deletePagoProveedor(id); } catch (e) { throw e; }
     });
 }
 
@@ -317,7 +342,6 @@ app.on('activate', () => {
     }
 });
 
-// Manejo de errores no capturados
 process.on('uncaughtException', (error) => {
     dialog.showErrorBox('Error Inesperado', 
         `Se produjo un error:\n\n${error.message}`

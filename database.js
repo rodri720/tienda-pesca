@@ -166,7 +166,7 @@ class Database {
                             if (err) console.warn("Error creando tabla caja_diaria:", err.message);
                         });
                         
-                        // ========== NUEVA TABLA: ventas ==========
+                        // ========== TABLA ventas CON SOPORTE PARA PAGO MIXTO ==========
                         this.db.run(`
                             CREATE TABLE IF NOT EXISTS ventas (
                                 id TEXT PRIMARY KEY,
@@ -181,10 +181,22 @@ class Database {
                                 recargo_aplicado REAL,
                                 monto_recibido REAL,
                                 vuelto REAL,
+                                pagos TEXT,               -- NUEVO: guarda el array de pagos (pago mixto)
                                 fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
                             )
                         `, (err) => {
                             if (err) console.warn("Error creando tabla ventas:", err.message);
+                            else {
+                                // Migración para agregar columna 'pagos' si la tabla ya existía
+                                this.db.all("PRAGMA table_info(ventas)", (err, cols) => {
+                                    if (!err && cols && !cols.some(c => c.name === 'pagos')) {
+                                        this.db.run("ALTER TABLE ventas ADD COLUMN pagos TEXT", (err) => {
+                                            if (err) console.warn("No se pudo agregar columna pagos:", err.message);
+                                            else console.log("✅ Columna 'pagos' agregada a la tabla ventas");
+                                        });
+                                    }
+                                });
+                            }
                         });
                         
                         this.verificarCategorias();
@@ -842,16 +854,18 @@ class Database {
         });
     }
 
-    // ============ VENTAS ============
+    // ============ VENTAS (con soporte para pago mixto) ============
     async createVenta(venta) {
         return new Promise((resolve, reject) => {
-            // Respetar el ID que viene del front-end (si existe)
             const id = venta.id || uuidv4();
             const productosJSON = JSON.stringify(venta.productos);
+            // NUEVO: Guardar el array de pagos (si existe) como JSON
+            const pagosJSON = venta.pagos ? JSON.stringify(venta.pagos) : null;
+            
             this.db.run(
                 `INSERT INTO ventas 
-                 (id, fecha, productos, total, total_neto, comision_porcentaje, comision_monto, metodo_pago, descuento_aplicado, recargo_aplicado, monto_recibido, vuelto)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (id, fecha, productos, total, total_neto, comision_porcentaje, comision_monto, metodo_pago, descuento_aplicado, recargo_aplicado, monto_recibido, vuelto, pagos)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     id,
                     venta.fecha,
@@ -864,7 +878,8 @@ class Database {
                     venta.descuento_aplicado || 0,
                     venta.recargo_aplicado || 0,
                     venta.monto_recibido || null,
-                    venta.vuelto || null
+                    venta.vuelto || null,
+                    pagosJSON
                 ],
                 function(err) {
                     if (err) reject(err);
@@ -876,7 +891,6 @@ class Database {
 
     async getVentasByDate(fecha) {
         return new Promise((resolve) => {
-            // Usar DATE() para comparar solo la parte de fecha, sin importar la zona horaria
             this.db.all(
                 `SELECT * FROM ventas WHERE DATE(fecha) = DATE(?) ORDER BY fecha ASC`,
                 [fecha],
@@ -888,6 +902,12 @@ class Database {
                             try {
                                 row.productos = JSON.parse(row.productos);
                             } catch(e) { row.productos = []; }
+                            // NUEVO: Parsear el campo pagos si existe
+                            if (row.pagos) {
+                                try {
+                                    row.pagos = JSON.parse(row.pagos);
+                                } catch(e) { row.pagos = []; }
+                            }
                         });
                         resolve(rows);
                     }

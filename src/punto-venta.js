@@ -3,6 +3,7 @@
 // Se mantiene localStorage como fallback
 // CORREGIDO: generarResumenCierreCaja ahora prioriza localStorage para mostrar vacío después del cierre
 // CORREGIDO: registrarCierreCaja con logs de verificación y alerta en caso de error en SQLite
+// NUEVO: Soporte para pago mixto (múltiples métodos de pago en una misma venta)
 
 class PuntoVentaApp {
     constructor() {
@@ -217,7 +218,6 @@ class PuntoVentaApp {
                 this.mostrarHistorialCierres();
             });
         } else {
-            // Si no existe en el HTML, se puede crear dinámicamente pero mejor que esté en el HTML
             console.warn("No se encontró el botón btn-historial-cierres");
         }
 
@@ -232,7 +232,7 @@ class PuntoVentaApp {
             console.warn("No se encontró el botón btn-historial-caja");
         }
 
-        // ========== NUEVO: Botones de ingreso y retiro manual de caja ==========
+        // Botones de ingreso y retiro manual de caja
         const btnIngreso = document.getElementById('btn-ingreso-caja');
         if (btnIngreso) {
             btnIngreso.addEventListener('click', (e) => {
@@ -248,7 +248,6 @@ class PuntoVentaApp {
                 this.abrirModalRetiro();
             });
         }
-        // ========================================================================
 
         document.addEventListener('DOMContentLoaded', () => {
             const btnDevolucion = document.getElementById('btn-devolucion');
@@ -462,7 +461,7 @@ class PuntoVentaApp {
         this.actualizarCajaDiaria(monto, 'egreso', concepto);
     }
 
-    // ========== NUEVO: MÉTODOS PARA INGRESO Y RETIRO MANUAL ==========
+    // Ingreso y retiro manual
     abrirModalIngreso() {
         let modal = document.getElementById('modal-ingreso-caja');
         if (!modal) {
@@ -607,7 +606,6 @@ class PuntoVentaApp {
             this.mostrarNotificacion(`✅ Retiro de $${monto.toFixed(2)} registrado`);
         });
     }
-    // ===============================================================
 
     mostrarSaldoCaja() {
         // Crear un modal para ingresar la clave
@@ -821,7 +819,6 @@ class PuntoVentaApp {
         this.abrirModal('modal-saldo-caja');
     }
 
-    // ==================== FUNCIÓN PARA MOSTRAR DETALLE DE MOVIMIENTO ====================
     mostrarDetalleMovimiento(movimiento) {
         const { tipo, referencia, monto, metodo, concepto, fecha } = movimiento;
 
@@ -855,7 +852,6 @@ class PuntoVentaApp {
         }
     }
 
-
     mostrarDetalleVenta(venta) {
         const fecha = new Date(venta.fecha);
         const fechaStr = fecha.toLocaleString('es-ES');
@@ -871,6 +867,18 @@ class PuntoVentaApp {
                 <div style="padding: 20px;">
                     <div><strong>Fecha:</strong> ${fechaStr}</div>
                     <div><strong>Método de pago:</strong> ${venta.metodo_pago.toUpperCase()}</div>
+        `;
+        
+        // Mostrar desglose de pagos si es mixto
+        if (venta.metodo_pago === 'mixto' && venta.pagos) {
+            html += `<div><strong>Desglose de pagos:</strong></div><ul>`;
+            venta.pagos.forEach(p => {
+                html += `<li>${p.metodo.toUpperCase()}: $${p.monto.toFixed(2)} (neto: $${p.neto.toFixed(2)})</li>`;
+            });
+            html += `</ul>`;
+        }
+        
+        html += `
                     <div><strong>Total pagado:</strong> $${venta.total.toFixed(2)}</div>
                     ${venta.descuento_aplicado ? `<div><strong>Descuento:</strong> -$${venta.descuento_aplicado.toFixed(2)}</div>` : ''}
                     ${venta.recargo_aplicado ? `<div><strong>Recargo:</strong> +$${venta.recargo_aplicado.toFixed(2)}</div>` : ''}
@@ -922,6 +930,7 @@ class PuntoVentaApp {
         modal.innerHTML = html;
         this.abrirModal('modal-detalle-venta');
     }
+    
     mostrarDetalleGasto(gasto) {
         const fecha = new Date(gasto.fecha);
         const fechaStr = fecha.toLocaleString('es-ES');
@@ -961,9 +970,8 @@ class PuntoVentaApp {
         this.abrirModal('modal-detalle-gasto');
     }
 
-    // ==================== NUEVO: HISTORIAL DE CAJA (DIARIO) ====================
+    // ==================== HISTORIAL DE CAJA (DIARIO) ====================
     inicializarCajaDiaria() {
-        // Estructura para llevar el resumen del día actual
         let cajaDiaria = localStorage.getItem('cajaDiaria');
         if (!cajaDiaria) {
             const hoy = new Date().toISOString().split('T')[0];
@@ -984,7 +992,6 @@ class PuntoVentaApp {
         let cajaDiaria = JSON.parse(localStorage.getItem('cajaDiaria'));
         const hoy = new Date().toISOString().split('T')[0];
         
-        // Si la fecha guardada es diferente a hoy, finalizar el día anterior y empezar uno nuevo
         if (cajaDiaria.fecha !== hoy) {
             this.guardarDiaEnHistorial(cajaDiaria);
             const caja = JSON.parse(localStorage.getItem('caja')) || { saldo: 0 };
@@ -998,7 +1005,6 @@ class PuntoVentaApp {
             };
         }
         
-        // Actualizar totales y movimientos
         if (tipo === 'ingreso') {
             cajaDiaria.totalIngresos += monto;
         } else {
@@ -1018,18 +1024,15 @@ class PuntoVentaApp {
     guardarDiaEnHistorial(dia) {
         const historial = JSON.parse(localStorage.getItem('historialCaja')) || [];
         historial.push(dia);
-        // Mantener solo últimos 30 días
         while (historial.length > 30) historial.shift();
         localStorage.setItem('historialCaja', JSON.stringify(historial));
     }
 
     actualizarHistorialCajaDiario() {
-        // Llamado al iniciar: si el día cambió, guarda el anterior
         let cajaDiaria = JSON.parse(localStorage.getItem('cajaDiaria'));
         const hoy = new Date().toISOString().split('T')[0];
         if (cajaDiaria && cajaDiaria.fecha !== hoy) {
             this.guardarDiaEnHistorial(cajaDiaria);
-            // Reiniciar con el día actual
             const caja = JSON.parse(localStorage.getItem('caja')) || { saldo: 0 };
             const nuevoDia = {
                 fecha: hoy,
@@ -1045,7 +1048,6 @@ class PuntoVentaApp {
         }
     }
 
-    // ==================== NUEVO: HISTORIAL DE CAJA (ahora muestra los resúmenes diarios) ====================
     async mostrarHistorialCaja() {
         let cierres = [];
         if (window.api && window.api.getCierres) {
@@ -1064,7 +1066,6 @@ class PuntoVentaApp {
             return;
         }
 
-        // Ordenar de más reciente a más antiguo
         cierres.reverse();
 
         let modal = document.getElementById('modal-historial-caja');
@@ -1128,7 +1129,6 @@ class PuntoVentaApp {
         this.abrirModal('modal-historial-caja');
     }
 
-    // Función auxiliar para mostrar las ventas de un día específico (usada en el historial de caja)
     verVentasDelDia(fechaISO) {
         const ventasHistoricas = JSON.parse(localStorage.getItem('ventasHistoricas')) || [];
         const ventasDelDia = ventasHistoricas.filter(v => new Date(v.fecha).toISOString().split('T')[0] === fechaISO);
@@ -1321,7 +1321,6 @@ class PuntoVentaApp {
         });
     }
 
-    // Funciones para pagos a proveedores
     abrirRegistrarPagoProveedor(proveedorId, proveedorNombre) {
         this.cerrarModal('modal-proveedores');
         
@@ -1894,7 +1893,6 @@ class PuntoVentaApp {
             gastosDelDia.push(gasto);
             localStorage.setItem('gastosDelDia', JSON.stringify(gastosDelDia));
             
-            // --- GUARDAR EN SQLITE ---
             if (window.api && window.api.createGasto) {
                 try {
                     await window.api.createGasto(gasto);
@@ -1902,9 +1900,7 @@ class PuntoVentaApp {
                     console.error('Error guardando gasto en SQLite:', error);
                 }
             }
-            // -------------------------
             
-            // Si la categoría es "Aporte capital (ingreso)", registrar como ingreso en lugar de egreso
             if (categoria === "Aporte capital (ingreso)") {
                 this.agregarIngreso(monto, `Aporte de capital: ${descripcion}`, metodo_pago, comprobante);
             } else {
@@ -1966,10 +1962,8 @@ class PuntoVentaApp {
             campo.style.backgroundColor = 'white';
         });
         
-        // Asegurar que la categoría "Aporte capital (ingreso)" esté presente
         const selectCategoria = document.getElementById('gasto-categoria');
         if (selectCategoria) {
-            // Verificar si la opción ya existe
             let existeAporte = false;
             for (let i = 0; i < selectCategoria.options.length; i++) {
                 if (selectCategoria.options[i].value === "Aporte capital (ingreso)") {
@@ -1978,11 +1972,9 @@ class PuntoVentaApp {
                 }
             }
             if (!existeAporte) {
-                // Crear la opción y agregarla
                 const option = document.createElement('option');
                 option.value = "Aporte capital (ingreso)";
                 option.textContent = "Aporte capital (ingreso)";
-                // Insertar antes de "Otros" o al final
                 const othersOption = Array.from(selectCategoria.options).find(opt => opt.value === "Otros");
                 if (othersOption) {
                     selectCategoria.insertBefore(option, othersOption);
@@ -2107,17 +2099,17 @@ class PuntoVentaApp {
                     <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
                         <strong>${gasto.descripcion}</strong>
                         ${gasto.proveedor ? `<div style="font-size: 0.85rem; color: #718096;">${gasto.proveedor}</div>` : ''}
-                      </td>
+                       </td>
                     <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
                         <span style="background: #e6fffa; color: #234e52; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem;">
                             ${gasto.categoria}
                         </span>
-                      </td>
+                       </td>
                     <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">${gasto.metodo_pago}</td>
                     <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #f56565;">
                         $${gasto.monto.toFixed(2)}
-                      </td>
-                  </tr>
+                       </td>
+                   </tr>
             `;
         });
         
@@ -2128,8 +2120,8 @@ class PuntoVentaApp {
                                 <td colspan="3" style="padding: 12px; text-align: right; border-top: 2px solid #f56565;">TOTAL GENERAL:</td>
                                 <td style="padding: 12px; text-align: right; border-top: 2px solid #f56565; color: #f56565; font-size: 1.1rem;">
                                     $${totalGastos.toFixed(2)}
-                                   </td>
-                               </tr>
+                                    </td>
+                                </tr>
                         </tfoot>
                     </table>
                 </div>
@@ -2175,7 +2167,7 @@ class PuntoVentaApp {
         }
     }
 
-    // ==================== FUNCIONES DE CIERRE DE CAJA ====================
+    // ==================== CIERRE DE CAJA ====================
     abrirCierreCaja() {
         let modal = document.getElementById('modal-cierre-caja');
         if (!modal) {
@@ -2194,7 +2186,6 @@ class PuntoVentaApp {
                     </button>
                 </div>
                 <div id="resumen-cierre-caja" style="padding: 20px;">
-                    <!-- Contenido dinámico -->
                 </div>
                 <div class="form-actions" style="padding: 0 20px 20px; display: flex; flex-wrap: wrap; gap: 10px;">
                     <button type="button" class="btn btn-secondary btn-cerrar-modal" data-modal="modal-cierre-caja">
@@ -2217,151 +2208,169 @@ class PuntoVentaApp {
         this.generarResumenCierreCaja();
     }
 
-    // ==================== MODIFICACIÓN IMPORTANTE ====================
-    // Ahora prioriza localStorage para que el resumen se muestre vacío después del cierre
     async generarResumenCierreCaja() {
-    // Solo usar localStorage para el resumen del día actual (se limpia al cerrar)
-    let ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
-    let gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
+        let ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
+        let gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
 
-    // Si no hay datos, mostrar mensaje de que no hay ventas
-    const ventasPorMetodo = {};
-    ventasDelDia.forEach(venta => {
-        const totalVenta = venta.total_final !== undefined ? venta.total_final : venta.total;
-        const totalNeto = venta.total_neto !== undefined ? venta.total_neto : (totalVenta - (venta.comision_monto || 0));
-        const comisionMonto = venta.comision_monto || 0;
+        const ventasPorMetodo = {};
         
-        if (!ventasPorMetodo[venta.metodo_pago]) {
-            ventasPorMetodo[venta.metodo_pago] = {
-                total: 0,
-                neto: 0,
-                comisiones: 0,
-                cantidad: 0
-            };
+        // Función para agregar venta al resumen por método (soporta pagos mixtos)
+        const agregarVentaAResumen = (venta) => {
+            if (venta.metodo_pago === 'mixto' && venta.pagos) {
+                // Para pago mixto, sumar cada pago individualmente
+                venta.pagos.forEach(pago => {
+                    if (!ventasPorMetodo[pago.metodo]) {
+                        ventasPorMetodo[pago.metodo] = {
+                            total: 0,
+                            neto: 0,
+                            comisiones: 0,
+                            cantidad: 0
+                        };
+                    }
+                    ventasPorMetodo[pago.metodo].total += pago.monto;
+                    ventasPorMetodo[pago.metodo].neto += pago.neto;
+                    ventasPorMetodo[pago.metodo].comisiones += (pago.monto - pago.neto);
+                    ventasPorMetodo[pago.metodo].cantidad += 1;
+                });
+            } else {
+                // Método único
+                const totalVenta = venta.total_final !== undefined ? venta.total_final : venta.total;
+                const totalNeto = venta.total_neto !== undefined ? venta.total_neto : (totalVenta - (venta.comision_monto || 0));
+                const comisionMonto = venta.comision_monto || 0;
+                
+                if (!ventasPorMetodo[venta.metodo_pago]) {
+                    ventasPorMetodo[venta.metodo_pago] = {
+                        total: 0,
+                        neto: 0,
+                        comisiones: 0,
+                        cantidad: 0
+                    };
+                }
+                
+                ventasPorMetodo[venta.metodo_pago].total += totalVenta;
+                ventasPorMetodo[venta.metodo_pago].neto += totalNeto;
+                ventasPorMetodo[venta.metodo_pago].comisiones += comisionMonto;
+                ventasPorMetodo[venta.metodo_pago].cantidad += 1;
+            }
+        };
+        
+        ventasDelDia.forEach(venta => agregarVentaAResumen(venta));
+        
+        const totalVentas = ventasDelDia.reduce((sum, venta) => sum + (venta.total_final !== undefined ? venta.total_final : venta.total), 0);
+        const totalComisiones = ventasDelDia.reduce((sum, venta) => sum + (venta.comision_monto || 0), 0);
+        const totalNeto = ventasDelDia.reduce((sum, venta) => sum + (venta.total_neto !== undefined ? venta.total_neto : ((venta.total_final !== undefined ? venta.total_final : venta.total) - (venta.comision_monto || 0))), 0);
+        const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + gasto.monto, 0);
+        const totalFinal = totalNeto - totalGastos;
+        
+        let html = `
+            <div style="margin-bottom: 20px;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h4 style="color: var(--dark); margin-bottom: 5px;">Resumen del Día</h4>
+                    <div style="color: #718096; font-size: 1.1rem;">${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                </div>
+                
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 1.1rem;">Ventas del día:</span>
+                        <span style="font-size: 1.5rem; font-weight: 700;">$${totalVentas.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 1.1rem;">Total comisiones:</span>
+                        <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalComisiones.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 1.1rem;">Total gastos:</span>
+                        <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalGastos.toFixed(2)}</span>
+                    </div>
+                    <div style="border-top: 2px solid rgba(255,255,255,0.3); margin: 15px 0 10px; padding-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 1.2rem; font-weight: 600;">NETO A DEPOSITAR:</span>
+                            <span style="font-size: 1.8rem; font-weight: 700; color: #c6f6d5;">$${totalFinal.toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <h5 style="color: var(--dark); margin: 20px 0 15px; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-chart-pie"></i> Ventas por Método de Pago
+                </h5>
+        `;
+        
+        if (Object.keys(ventasPorMetodo).length === 0) {
+            html += `<p style="text-align: center; padding: 20px; color: #718096;">No hay ventas registradas hoy</p>`;
+        } else {
+            Object.keys(ventasPorMetodo).forEach(metodo => {
+                const datos = ventasPorMetodo[metodo];
+                const porcentaje = totalVentas > 0 ? ((datos.total / totalVentas) * 100).toFixed(1) : '0.0';
+                
+                html += `
+                    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div>
+                                <strong style="text-transform: capitalize; font-size: 1.1rem;">${metodo}</strong>
+                                <span style="background: #e2e8f0; padding: 3px 8px; border-radius: 4px; margin-left: 10px; font-size: 0.85rem;">
+                                    ${datos.cantidad} venta${datos.cantidad !== 1 ? 's' : ''}
+                                </span>
+                            </div>
+                            <span style="font-weight: 700; color: var(--primary); font-size: 1.2rem;">$${datos.total.toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+                            <span style="color: #718096;">Comisión: $${datos.comisiones.toFixed(2)}</span>
+                            <span style="color: #2d3748;">Neto: $${datos.neto.toFixed(2)}</span>
+                            <span style="color: #48bb78;">${porcentaje}%</span>
+                        </div>
+                    </div>
+                `;
+            });
         }
         
-        ventasPorMetodo[venta.metodo_pago].total += totalVenta;
-        ventasPorMetodo[venta.metodo_pago].neto += totalNeto;
-        ventasPorMetodo[venta.metodo_pago].comisiones += comisionMonto;
-        ventasPorMetodo[venta.metodo_pago].cantidad += 1;
-    });
-    
-    const totalVentas = ventasDelDia.reduce((sum, venta) => sum + (venta.total_final !== undefined ? venta.total_final : venta.total), 0);
-    const totalComisiones = ventasDelDia.reduce((sum, venta) => sum + (venta.comision_monto || 0), 0);
-    const totalNeto = ventasDelDia.reduce((sum, venta) => sum + (venta.total_neto !== undefined ? venta.total_neto : ((venta.total_final !== undefined ? venta.total_final : venta.total) - (venta.comision_monto || 0))), 0);
-    const totalGastos = gastosDelDia.reduce((sum, gasto) => sum + gasto.monto, 0);
-    const totalFinal = totalNeto - totalGastos;
-    
-    let html = `
-        <div style="margin-bottom: 20px;">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h4 style="color: var(--dark); margin-bottom: 5px;">Resumen del Día</h4>
-                <div style="color: #718096; font-size: 1.1rem;">${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
-            </div>
+        if (gastosDelDia.length > 0) {
+            html += `<h5 style="color: var(--dark); margin: 25px 0 15px; display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-receipt"></i> Gastos del Día (${gastosDelDia.length})
+                    </h5>
+                    <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">`;
             
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span style="font-size: 1.1rem;">Ventas del día:</span>
-                    <span style="font-size: 1.5rem; font-weight: 700;">$${totalVentas.toFixed(2)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span style="font-size: 1.1rem;">Total comisiones:</span>
-                    <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalComisiones.toFixed(2)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span style="font-size: 1.1rem;">Total gastos:</span>
-                    <span style="font-size: 1.3rem; font-weight: 600; color: #fed7d7;">-$${totalGastos.toFixed(2)}</span>
-                </div>
-                <div style="border-top: 2px solid rgba(255,255,255,0.3); margin: 15px 0 10px; padding-top: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 1.2rem; font-weight: 600;">NETO A DEPOSITAR:</span>
-                        <span style="font-size: 1.8rem; font-weight: 700; color: #c6f6d5;">$${totalFinal.toFixed(2)}</span>
-                    </div>
-                </div>
-            </div>
-            
-            <h5 style="color: var(--dark); margin: 20px 0 15px; display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-chart-pie"></i> Ventas por Método de Pago
-            </h5>
-    `;
-    
-    if (Object.keys(ventasPorMetodo).length === 0) {
-        html += `<p style="text-align: center; padding: 20px; color: #718096;">No hay ventas registradas hoy</p>`;
-    } else {
-        Object.keys(ventasPorMetodo).forEach(metodo => {
-            const datos = ventasPorMetodo[metodo];
-            const porcentaje = totalVentas > 0 ? ((datos.total / totalVentas) * 100).toFixed(1) : '0.0';
-            
-            html += `
-                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            gastosDelDia.forEach((gasto, index) => {
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: ${index < gastosDelDia.length - 1 ? '1px solid #e2e8f0' : 'none'};">
                         <div>
-                            <strong style="text-transform: capitalize; font-size: 1.1rem;">${metodo}</strong>
-                            <span style="background: #e2e8f0; padding: 3px 8px; border-radius: 4px; margin-left: 10px; font-size: 0.85rem;">
-                                ${datos.cantidad} venta${datos.cantidad !== 1 ? 's' : ''}
-                            </span>
+                            <div style="font-weight: 600;">${gasto.descripcion}</div>
+                            <div style="font-size: 0.85rem; color: #718096;">${gasto.categoria} • ${gasto.metodo_pago}</div>
                         </div>
-                        <span style="font-weight: 700; color: var(--primary); font-size: 1.2rem;">$${datos.total.toFixed(2)}</span>
+                        <div style="color: #f56565; font-weight: 700; font-size: 1.1rem;">-$${gasto.monto.toFixed(2)}</div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
-                        <span style="color: #718096;">Comisión: $${datos.comisiones.toFixed(2)}</span>
-                        <span style="color: #2d3748;">Neto: $${datos.neto.toFixed(2)}</span>
-                        <span style="color: #48bb78;">${porcentaje}%</span>
-                    </div>
-                </div>
-            `;
-        });
-    }
-    
-    if (gastosDelDia.length > 0) {
-        html += `<h5 style="color: var(--dark); margin: 25px 0 15px; display: flex; align-items: center; gap: 10px;">
-                    <i class="fas fa-receipt"></i> Gastos del Día (${gastosDelDia.length})
-                </h5>
-                <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">`;
+                `;
+            });
+            
+            html += `</div>`;
+        }
         
-        gastosDelDia.forEach((gasto, index) => {
-            html += `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: ${index < gastosDelDia.length - 1 ? '1px solid #e2e8f0' : 'none'};">
-                    <div>
-                        <div style="font-weight: 600;">${gasto.descripcion}</div>
-                        <div style="font-size: 0.85rem; color: #718096;">${gasto.categoria} • ${gasto.metodo_pago}</div>
-                    </div>
-                    <div style="color: #f56565; font-weight: 700; font-size: 1.1rem;">-$${gasto.monto.toFixed(2)}</div>
+        html += `
+            <div style="margin-top: 25px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #48bb78;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Total ventas (neto):</span>
+                    <span style="font-weight: 600;">$${totalNeto.toFixed(2)}</span>
                 </div>
-            `;
-        });
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Total gastos:</span>
+                    <span style="font-weight: 600; color: #f56565;">-$${totalGastos.toFixed(2)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 2px dashed #cbd5e0;">
+                    <span style="font-weight: 700; font-size: 1.1rem;">RESULTADO FINAL:</span>
+                    <span style="font-weight: 700; font-size: 1.3rem; color: ${totalFinal >= 0 ? '#48bb78' : '#f56565'};">
+                        $${totalFinal.toFixed(2)}
+                    </span>
+                </div>
+            </div>
+        `;
         
-        html += `</div>`;
+        const resumenCierre = document.getElementById('resumen-cierre-caja');
+        if (resumenCierre) {
+            resumenCierre.innerHTML = html;
+        }
     }
-    
-    html += `
-        <div style="margin-top: 25px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #48bb78;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                <span>Total ventas (neto):</span>
-                <span style="font-weight: 600;">$${totalNeto.toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                <span>Total gastos:</span>
-                <span style="font-weight: 600; color: #f56565;">-$${totalGastos.toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 2px dashed #cbd5e0;">
-                <span style="font-weight: 700; font-size: 1.1rem;">RESULTADO FINAL:</span>
-                <span style="font-weight: 700; font-size: 1.3rem; color: ${totalFinal >= 0 ? '#48bb78' : '#f56565'};">
-                    $${totalFinal.toFixed(2)}
-                </span>
-            </div>
-        </div>
-    `;
-    
-    const resumenCierre = document.getElementById('resumen-cierre-caja');
-    if (resumenCierre) {
-        resumenCierre.innerHTML = html;
-    }
-}
-    // ==================== CIERRE DE CAJA MODIFICADO: NO DESCUENTA SALDO ====================
+
     async registrarCierreCaja() {
         if (confirm('¿Registrar cierre de caja y limpiar datos del día?')) {
-            // --- Obtener ventas y gastos del día desde SQLite (o localStorage como fallback) ---
             let ventasDelDia = [];
             let gastosDelDia = [];
 
@@ -2386,13 +2395,10 @@ class PuntoVentaApp {
             if (gastosDelDia.length === 0) {
                 gastosDelDia = JSON.parse(localStorage.getItem('gastosDelDia')) || [];
             }
-            // ---------------------------------------------------------------------------------
 
-            // --- 1. Guardar el resumen diario de caja (historialCaja) ---
             let cajaDiaria = JSON.parse(localStorage.getItem('cajaDiaria'));
             const hoy = new Date().toISOString().split('T')[0];
             
-            // Si no existe o la fecha no es hoy, forzamos a crear el resumen actual
             if (!cajaDiaria || cajaDiaria.fecha !== hoy) {
                 const caja = JSON.parse(localStorage.getItem('caja')) || { saldo: 0 };
                 cajaDiaria = {
@@ -2404,13 +2410,10 @@ class PuntoVentaApp {
                     movimientos: []
                 };
             }
-            // Guardamos este día en el historial
             this.guardarDiaEnHistorial(cajaDiaria);
     
-            // --- 2. Guardar el cierre contable (resumen) ---
             const cierres = JSON.parse(localStorage.getItem('cierresHistoricos')) || [];
             
-            // Mover gastos al histórico de gastos
             const gastosHistoricos = JSON.parse(localStorage.getItem('gastosHistoricos')) || [];
             gastosHistoricos.push(...gastosDelDia);
             localStorage.setItem('gastosHistoricos', JSON.stringify(gastosHistoricos));
@@ -2447,10 +2450,6 @@ class PuntoVentaApp {
                 }
             }
             
-            // --- 3. NO se descuenta el saldo de caja ---
-            // Mantenemos la caja con su saldo actual
-    
-            // --- 4. Limpiar datos del día ---
             localStorage.removeItem('ventasDelDia');
             localStorage.removeItem('gastosDelDia');
             localStorage.removeItem('carrito');
@@ -2458,7 +2457,6 @@ class PuntoVentaApp {
             this.actualizarCarrito();
             this.actualizarResumenGastos([]);
             
-            // --- 5. Inicializar un nuevo día para la caja diaria (con el mismo saldo) ---
             const cajaActualizada = JSON.parse(localStorage.getItem('caja')) || { saldo: 0 };
             const nuevoDia = {
                 fecha: hoy,
@@ -2482,15 +2480,28 @@ class PuntoVentaApp {
     obtenerResumenVentasPorMetodo(ventas) {
         const resumen = {};
         ventas.forEach(venta => {
-            const totalVenta = venta.total_final !== undefined ? venta.total_final : venta.total;
-            if (!resumen[venta.metodo_pago]) {
-                resumen[venta.metodo_pago] = {
-                    total: 0,
-                    cantidad: 0
-                };
+            if (venta.metodo_pago === 'mixto' && venta.pagos) {
+                venta.pagos.forEach(pago => {
+                    if (!resumen[pago.metodo]) {
+                        resumen[pago.metodo] = {
+                            total: 0,
+                            cantidad: 0
+                        };
+                    }
+                    resumen[pago.metodo].total += pago.monto;
+                    resumen[pago.metodo].cantidad += 1;
+                });
+            } else {
+                const totalVenta = venta.total_final !== undefined ? venta.total_final : venta.total;
+                if (!resumen[venta.metodo_pago]) {
+                    resumen[venta.metodo_pago] = {
+                        total: 0,
+                        cantidad: 0
+                    };
+                }
+                resumen[venta.metodo_pago].total += totalVenta;
+                resumen[venta.metodo_pago].cantidad += 1;
             }
-            resumen[venta.metodo_pago].total += totalVenta;
-            resumen[venta.metodo_pago].cantidad += 1;
         });
         return resumen;
     }
@@ -2517,10 +2528,8 @@ class PuntoVentaApp {
         }
     }
 
-    // ==================== NUEVO: HISTORIAL DE CIERRES ====================
     async mostrarHistorialCierres() {
         let cierres = [];
-        // Intentar obtener de base de datos primero
         if (window.api && window.api.getCierres) {
             try {
                 cierres = await window.api.getCierres(100);
@@ -2528,7 +2537,6 @@ class PuntoVentaApp {
                 console.error("Error al obtener cierres de BD:", error);
             }
         }
-        // Si no hay en BD, usar localStorage
         if (cierres.length === 0) {
             cierres = JSON.parse(localStorage.getItem('cierresHistoricos')) || [];
         }
@@ -2732,7 +2740,6 @@ class PuntoVentaApp {
         return producto || null;
     }
 
-    // ==================== MOSTRAR PRODUCTO CON BOTÓN EDITAR ====================
     mostrarProducto(producto) {
         const display = document.getElementById('product-display');
 
@@ -3064,7 +3071,7 @@ class PuntoVentaApp {
             </div>
             
             <div id="botones-pago" style="margin-top: 20px;">
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px;">
                     <button class="btn-pago btn-efectivo ${this.metodoPagoSeleccionado === 'efectivo' ? 'activo' : ''}" 
                             onclick="app.seleccionarMetodoPago('efectivo')">
                         <i class="fas fa-money-bill-wave"></i> Efectivo
@@ -3088,6 +3095,11 @@ class PuntoVentaApp {
                     <button class="btn-pago btn-mercadopago ${this.metodoPagoSeleccionado === 'mercadopago' ? 'activo' : ''}" 
                             onclick="app.seleccionarMetodoPago('mercadopago')">
                         <i class="fas fa-mobile-alt"></i> Mercado Pago
+                    </button>
+                    <!-- NUEVO: Botón para pago mixto -->
+                    <button class="btn-pago btn-mixto ${this.metodoPagoSeleccionado === 'mixto' ? 'activo' : ''}" 
+                            onclick="app.seleccionarMetodoPago('mixto')" style="grid-column: span 2; background: #6c5ce7;">
+                        <i class="fas fa-hand-holding-usd"></i> Pago Mixto (varios métodos)
                     </button>
                 </div>
                 
@@ -3137,8 +3149,7 @@ class PuntoVentaApp {
         this.actualizarCarrito();
     }
 
-    // ==================== FUNCIONES DE PAGO CON DESCUENTO/RECARGO ====================
-
+    // ==================== PROCESAR PAGO (con soporte para pago mixto) ====================
     abrirProcesarPago() {
         if (this.carrito.length === 0) {
             this.mostrarError('No hay productos en el carrito');
@@ -3156,6 +3167,8 @@ class PuntoVentaApp {
         }
         
         const metodo = this.metodoPagoSeleccionado;
+        
+        // Construcción dinámica del contenido del modal según el método
         let seccionMetodo = '';
         
         if (metodo === 'efectivo') {
@@ -3194,8 +3207,81 @@ class PuntoVentaApp {
                     <p style="margin-top: 10px; font-size: 0.9rem; color: #718096;">El recargo se suma al total base.</p>
                 </div>
             `;
+        } else if (metodo === 'mixto') {
+            // Construir tabla de métodos disponibles para pago mixto
+            const metodosDisponibles = ['efectivo', 'debito', 'credito', 'transferencia', 'qr', 'mercadopago'];
+            let tablaPagos = `
+                <div id="seccion-pago-mixto" style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px;">
+                    <h4 style="margin-bottom: 15px; color: var(--dark);">Distribuir pago entre métodos</h4>
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; font-weight: bold; padding: 8px 0; border-bottom: 1px solid #cbd5e0;">
+                            <span>Método</span>
+                            <span>Monto a pagar</span>
+                            <span>Neto (después comisión)</span>
+                        </div>
+            `;
+            metodosDisponibles.forEach(met => {
+                const comision = this.comisiones[met] || 0;
+                tablaPagos += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e2e8f0;">
+                        <span style="text-transform: capitalize; width: 30%;">${met}</span>
+                        <input type="number" id="pago-monto-${met}" class="form-control pago-monto-input" data-metodo="${met}" data-comision="${comision}" 
+                               style="width: 30%; margin: 0 10px;" min="0" step="0.01" value="0">
+                        <span id="pago-neto-${met}" style="width: 30%; text-align: right;">$0.00</span>
+                    </div>
+                `;
+            });
+            tablaPagos += `
+                    </div>
+                    <div style="margin-top: 15px; padding: 10px; background: #e6f7f7; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; font-weight: bold;">
+                            <span>Total asignado:</span>
+                            <span id="total-asignado-mixto">$0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-weight: bold; color: ${totalBase >= 0 ? '#48bb78' : '#f56565'}; margin-top: 5px;">
+                            <span>Faltante / Sobrante:</span>
+                            <span id="diferencia-mixto">$${totalBase.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div id="seccion-efectivo-vuelto-mixto" style="margin-top: 15px; display: none;">
+                        <div class="form-group">
+                            <label><i class="fas fa-money-bill-wave"></i> Monto recibido en efectivo</label>
+                            <input type="number" id="monto-recibido-efectivo-mixto" class="form-control" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div id="vuelto-info-mixto" style="background: #e6f7f7; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 600;">Vuelto en efectivo:</span>
+                                <span id="monto-vuelto-mixto" style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p style="margin-top: 15px; font-size: 0.9rem; color: #718096;">
+                        Asigne montos a cada método hasta cubrir el total. Si asigna más efectivo del necesario, se calculará vuelto.
+                    </p>
+                </div>
+            `;
+            seccionMetodo = tablaPagos;
         } else {
             seccionMetodo = '';
+        }
+        
+        // Sección común de efectivo para método único
+        let seccionEfectivoUnico = '';
+        if (metodo === 'efectivo') {
+            seccionEfectivoUnico = `
+                <div id="seccion-efectivo" style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label><i class="fas fa-money-bill-wave"></i> Monto recibido</label>
+                        <input type="number" id="monto-recibido" class="form-control" min="0" step="0.01" placeholder="0.00" value="${totalBase.toFixed(2)}">
+                    </div>
+                    <div id="vuelto-info" style="background: #e6f7f7; padding: 15px; border-radius: 8px; margin-top: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600;">Vuelto:</span>
+                            <span id="monto-vuelto" style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
         
         modal.innerHTML = `
@@ -3222,19 +3308,7 @@ class PuntoVentaApp {
                     </div>
                     
                     ${seccionMetodo}
-                    
-                    <div id="seccion-efectivo" style="display: ${metodo === 'efectivo' ? 'block' : 'none'}; margin-top: 20px;">
-                        <div class="form-group">
-                            <label><i class="fas fa-money-bill-wave"></i> Monto recibido</label>
-                            <input type="number" id="monto-recibido" class="form-control" min="0" step="0.01" placeholder="0.00" value="${totalBase.toFixed(2)}">
-                        </div>
-                        <div id="vuelto-info" style="background: #e6f7f7; padding: 15px; border-radius: 8px; margin-top: 15px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-weight: 600;">Vuelto:</span>
-                                <span id="monto-vuelto" style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">$0.00</span>
-                            </div>
-                        </div>
-                    </div>
+                    ${seccionEfectivoUnico}
                     
                     <div class="form-actions" style="margin-top: 30px;">
                         <button type="button" class="btn btn-secondary btn-cerrar-modal" data-modal="modal-procesar-pago">
@@ -3251,6 +3325,7 @@ class PuntoVentaApp {
         
         this.abrirModal('modal-procesar-pago');
         
+        // Variables de estado según el método
         let totalFinal = totalBase;
         let descuentoAplicado = { tipo: null, valor: 0 };
         let recargoAplicado = { porcentaje: 5, cuotas: 1 };
@@ -3269,6 +3344,7 @@ class PuntoVentaApp {
             }
         };
         
+        // Lógica para método único (efectivo con descuento, crédito con recargo)
         if (metodo === 'efectivo') {
             const btnAplicar = document.getElementById('btn-aplicar-descuento');
             const valorInput = document.getElementById('descuento-valor');
@@ -3312,7 +3388,6 @@ class PuntoVentaApp {
         }
         
         if (metodo === 'credito') {
-            // Definir la función en this para que pueda ser llamada desde el onclick
             this.seleccionarCuotas = (cuotas) => {
                 let porcentaje = 0;
                 if (cuotas === 1) porcentaje = 5;
@@ -3327,10 +3402,10 @@ class PuntoVentaApp {
                 totalFinal = totalBase * (1 + porcentaje / 100);
                 actualizarTotalFinal();
             };
-
+            
             const btnAplicarRecargo = document.getElementById('btn-aplicar-recargo');
             const recargoManual = document.getElementById('recargo-manual');
-
+            
             const aplicarRecargo = () => {
                 let porcentaje = parseFloat(recargoManual.value) || 0;
                 if (porcentaje < 0) porcentaje = 0;
@@ -3339,7 +3414,7 @@ class PuntoVentaApp {
                 totalFinal = totalBase * (1 + porcentaje / 100);
                 actualizarTotalFinal();
             };
-
+            
             if (btnAplicarRecargo) {
                 btnAplicarRecargo.addEventListener('click', aplicarRecargo);
             }
@@ -3348,8 +3423,7 @@ class PuntoVentaApp {
                     if (e.key === 'Enter') aplicarRecargo();
                 });
             }
-
-            // Inicializar con 1 pago (5%)
+            
             setTimeout(() => {
                 if (typeof this.seleccionarCuotas === 'function') {
                     this.seleccionarCuotas(1);
@@ -3357,14 +3431,120 @@ class PuntoVentaApp {
             }, 100);
         }
         
-        const montoRecibido = document.getElementById('monto-recibido');
-        if (montoRecibido) {
-            montoRecibido.addEventListener('input', () => this.calcularVuelto(totalFinal));
-            montoRecibido.focus();
-            montoRecibido.select();
+        // Lógica para pago mixto
+        if (metodo === 'mixto') {
+            const inputsMontos = document.querySelectorAll('.pago-monto-input');
+            const totalAsignadoSpan = document.getElementById('total-asignado-mixto');
+            const diferenciaSpan = document.getElementById('diferencia-mixto');
+            const seccionEfectivoVuelto = document.getElementById('seccion-efectivo-vuelto-mixto');
+            const efectivoInput = document.getElementById('monto-recibido-efectivo-mixto');
+            const vueltoSpan = document.getElementById('monto-vuelto-mixto');
+            
+            // Función para actualizar netos, total asignado y validar
+            const actualizarMixto = () => {
+                let totalAsignado = 0;
+                // Actualizar netos y sumar montos
+                inputsMontos.forEach(input => {
+                    const metodoPago = input.dataset.metodo;
+                    const comision = parseFloat(input.dataset.comision);
+                    let monto = parseFloat(input.value) || 0;
+                    if (monto < 0) monto = 0;
+                    if (monto > totalBase) monto = totalBase;
+                    input.value = monto.toFixed(2);
+                    const neto = monto * (1 - comision / 100);
+                    const netoSpan = document.getElementById(`pago-neto-${metodoPago}`);
+                    if (netoSpan) netoSpan.textContent = `$${neto.toFixed(2)}`;
+                    totalAsignado += monto;
+                });
+                totalAsignadoSpan.textContent = `$${totalAsignado.toFixed(2)}`;
+                const diferencia = totalBase - totalAsignado;
+                diferenciaSpan.textContent = `$${diferencia.toFixed(2)}`;
+                diferenciaSpan.style.color = diferencia >= 0 ? '#48bb78' : '#f56565';
+                
+                // Validar si se puede finalizar la venta (diferencia debe ser 0)
+                const btnFinalizar = document.getElementById('btn-finalizar-venta');
+                if (btnFinalizar) {
+                    btnFinalizar.disabled = Math.abs(diferencia) > 0.01;
+                }
+                
+                // Mostrar sección de efectivo/vuelto solo si se asignó efectivo
+                const efectivoMonto = parseFloat(document.getElementById('pago-monto-efectivo')?.value) || 0;
+                if (efectivoMonto > 0 && seccionEfectivoVuelto) {
+                    seccionEfectivoVuelto.style.display = 'block';
+                    if (efectivoInput) {
+                        efectivoInput.value = efectivoMonto.toFixed(2);
+                        efectivoInput.disabled = false;
+                    }
+                } else if (seccionEfectivoVuelto) {
+                    seccionEfectivoVuelto.style.display = 'none';
+                }
+                
+                // Calcular vuelto si hay efectivo
+                if (efectivoInput && vueltoSpan) {
+                    const efectivoRecibido = parseFloat(efectivoInput.value) || 0;
+                    const efectivoAsignado = parseFloat(document.getElementById('pago-monto-efectivo')?.value) || 0;
+                    if (efectivoRecibido >= efectivoAsignado) {
+                        const vuelto = efectivoRecibido - efectivoAsignado;
+                        vueltoSpan.textContent = `$${vuelto.toFixed(2)}`;
+                    } else {
+                        vueltoSpan.textContent = `$${(efectivoRecibido - efectivoAsignado).toFixed(2)} (falta)`;
+                    }
+                }
+            };
+            
+            // Asignar eventos a cada input de monto
+            inputsMontos.forEach(input => {
+                input.addEventListener('input', () => {
+                    // Asegurar que la suma no supere el total base
+                    let suma = 0;
+                    inputsMontos.forEach(inp => {
+                        let val = parseFloat(inp.value) || 0;
+                        if (val < 0) val = 0;
+                        suma += val;
+                    });
+                    if (suma > totalBase + 0.01) {
+                        // Si se excede, reducir el último modificado
+                        let exceso = suma - totalBase;
+                        let nuevoVal = Math.max(0, (parseFloat(input.value) || 0) - exceso);
+                        input.value = nuevoVal.toFixed(2);
+                    }
+                    actualizarMixto();
+                });
+            });
+            
+            if (efectivoInput) {
+                efectivoInput.addEventListener('input', () => {
+                    actualizarMixto();
+                });
+            }
+            
+            // Inicializar
+            actualizarMixto();
+            
+            // Almacenar datos para la venta
+            this.pagosMixtos = () => {
+                const pagos = [];
+                inputsMontos.forEach(input => {
+                    const metodoPago = input.dataset.metodo;
+                    let monto = parseFloat(input.value) || 0;
+                    if (monto > 0) {
+                        const comisionPorcentaje = this.comisiones[metodoPago] || 0;
+                        const comisionMonto = monto * (comisionPorcentaje / 100);
+                        const neto = monto - comisionMonto;
+                        pagos.push({
+                            metodo: metodoPago,
+                            monto: monto,
+                            comision_porcentaje: comisionPorcentaje,
+                            comision_monto: comisionMonto,
+                            neto: neto
+                        });
+                    }
+                });
+                return pagos;
+            };
         }
         
-        // Definir calcularVuelto como método de instancia
+        // Función para calcular vuelto en método único
         this.calcularVuelto = (total) => {
             const recibidoInput = document.getElementById('monto-recibido');
             if (!recibidoInput) return;
@@ -3384,17 +3564,364 @@ class PuntoVentaApp {
             }
         };
         
-        // Asignar evento al botón finalizar de manera directa (método original que funcionaba)
-        
+        // Si es método único efectivo, inicializar cálculo de vuelto
+        if (metodo === 'efectivo') {
+            const montoRecibido = document.getElementById('monto-recibido');
+            if (montoRecibido) {
+                montoRecibido.addEventListener('input', () => this.calcularVuelto(totalFinal));
+                montoRecibido.focus();
+                montoRecibido.select();
+            }
+        }
     }
-    // ==================== NUEVAS FUNCIONES: DEVOLUCIONES Y CAMBIOS ====================
-
+    
+    // ==================== FINALIZAR VENTA (soporta pago mixto) ====================
+    async finalizarVenta() {
+        if (this.carrito.length === 0) {
+            this.mostrarError('No hay productos en el carrito');
+            return;
+        }
+        
+        const modal = document.getElementById('modal-procesar-pago');
+        if (!modal) return;
+        
+        const metodo = this.metodoPagoSeleccionado;
+        const totalBase = this.carrito.reduce((sum, item) => sum + item.subtotal, 0);
+        
+        let totalFinal = totalBase;
+        let pagos = [];
+        let montoRecibidoEfectivo = null;
+        let vueltoEfectivo = 0;
+        
+        if (metodo === 'efectivo') {
+            // Descuento
+            const descuentoValor = parseFloat(document.getElementById('descuento-valor')?.value) || 0;
+            const tipoDescuento = document.querySelector('input[name="tipo-descuento"]:checked')?.value;
+            if (descuentoValor > 0) {
+                if (tipoDescuento === 'porcentaje') {
+                    totalFinal = totalBase * (1 - descuentoValor / 100);
+                } else {
+                    totalFinal = Math.max(0, totalBase - descuentoValor);
+                }
+            }
+            const recibidoInput = document.getElementById('monto-recibido');
+            if (!recibidoInput) {
+                this.mostrarError('No se encontró el campo de monto recibido');
+                return;
+            }
+            montoRecibidoEfectivo = parseFloat(recibidoInput.value) || 0;
+            if (montoRecibidoEfectivo < totalFinal) {
+                this.mostrarError(`El monto recibido ($${montoRecibidoEfectivo.toFixed(2)}) es menor al total ($${totalFinal.toFixed(2)})`);
+                return;
+            }
+            vueltoEfectivo = montoRecibidoEfectivo - totalFinal;
+            
+            const comisionPorcentaje = this.comisiones[metodo] || 0;
+            const comisionMonto = totalFinal * (comisionPorcentaje / 100);
+            const totalNeto = totalFinal - comisionMonto;
+            pagos = [{
+                metodo: metodo,
+                monto: totalFinal,
+                comision_porcentaje: comisionPorcentaje,
+                comision_monto: comisionMonto,
+                neto: totalNeto
+            }];
+        } 
+        else if (metodo === 'credito') {
+            const recargoManual = parseFloat(document.getElementById('recargo-manual')?.value) || 0;
+            totalFinal = totalBase * (1 + recargoManual / 100);
+            const comisionPorcentaje = this.comisiones[metodo] || 0;
+            const comisionMonto = totalFinal * (comisionPorcentaje / 100);
+            const totalNeto = totalFinal - comisionMonto;
+            pagos = [{
+                metodo: metodo,
+                monto: totalFinal,
+                comision_porcentaje: comisionPorcentaje,
+                comision_monto: comisionMonto,
+                neto: totalNeto
+            }];
+        }
+        else if (metodo === 'mixto') {
+            // Obtener pagos desde la función definida
+            if (typeof this.pagosMixtos === 'function') {
+                pagos = this.pagosMixtos();
+            } else {
+                // Fallback: leer inputs directamente
+                const inputs = document.querySelectorAll('.pago-monto-input');
+                pagos = [];
+                inputs.forEach(input => {
+                    const metodoPago = input.dataset.metodo;
+                    let monto = parseFloat(input.value) || 0;
+                    if (monto > 0) {
+                        const comisionPorcentaje = this.comisiones[metodoPago] || 0;
+                        const comisionMonto = monto * (comisionPorcentaje / 100);
+                        const neto = monto - comisionMonto;
+                        pagos.push({
+                            metodo: metodoPago,
+                            monto: monto,
+                            comision_porcentaje: comisionPorcentaje,
+                            comision_monto: comisionMonto,
+                            neto: neto
+                        });
+                    }
+                });
+            }
+            // Validar que la suma de montos coincida con totalBase
+            const sumaMontos = pagos.reduce((sum, p) => sum + p.monto, 0);
+            if (Math.abs(sumaMontos - totalBase) > 0.01) {
+                this.mostrarError(`La suma de los pagos ($${sumaMontos.toFixed(2)}) no coincide con el total ($${totalBase.toFixed(2)})`);
+                return;
+            }
+            totalFinal = totalBase;
+            // Para efectivo, calcular vuelto si el cliente dio más efectivo del asignado
+            const pagoEfectivo = pagos.find(p => p.metodo === 'efectivo');
+            if (pagoEfectivo) {
+                const efectivoRecibidoInput = document.getElementById('monto-recibido-efectivo-mixto');
+                if (efectivoRecibidoInput) {
+                    const efectivoRecibido = parseFloat(efectivoRecibidoInput.value) || 0;
+                    if (efectivoRecibido < pagoEfectivo.monto) {
+                        this.mostrarError(`El efectivo recibido ($${efectivoRecibido.toFixed(2)}) es menor al asignado ($${pagoEfectivo.monto.toFixed(2)})`);
+                        return;
+                    }
+                    vueltoEfectivo = efectivoRecibido - pagoEfectivo.monto;
+                    montoRecibidoEfectivo = efectivoRecibido;
+                }
+            }
+        }
+        else {
+            // Otros métodos únicos (débito, transferencia, etc.)
+            const comisionPorcentaje = this.comisiones[metodo] || 0;
+            const comisionMonto = totalFinal * (comisionPorcentaje / 100);
+            const totalNeto = totalFinal - comisionMonto;
+            pagos = [{
+                metodo: metodo,
+                monto: totalFinal,
+                comision_porcentaje: comisionPorcentaje,
+                comision_monto: comisionMonto,
+                neto: totalNeto
+            }];
+        }
+        
+        // Calcular totales globales
+        const totalPagado = pagos.reduce((sum, p) => sum + p.monto, 0);
+        const totalComisiones = pagos.reduce((sum, p) => sum + (p.comision_monto || 0), 0);
+        const totalNeto = pagos.reduce((sum, p) => sum + p.neto, 0);
+        
+        // Crear objeto venta
+        const venta = {
+            id: Date.now(),
+            fecha: new Date().toISOString(),
+            productos: this.carrito.map(item => ({
+                id: item.id,
+                sku: item.sku,
+                nombre: item.nombre,
+                cantidad: item.cantidad,
+                precio: item.precio,
+                subtotal: item.subtotal
+            })),
+            total: totalPagado,
+            total_neto: totalNeto,
+            comision_monto: totalComisiones,
+            metodo_pago: metodo,
+            pagos: pagos,  // Solo relevante si es mixto, pero lo guardamos siempre
+            monto_recibido: montoRecibidoEfectivo,
+            vuelto: vueltoEfectivo
+        };
+        
+        // Guardar venta
+        const ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
+        ventasDelDia.push(venta);
+        localStorage.setItem('ventasDelDia', JSON.stringify(ventasDelDia));
+        
+        this.guardarVentaEnHistorial(venta);
+        
+        if (window.api && window.api.createVenta) {
+            try {
+                await window.api.createVenta(venta);
+            } catch (error) {
+                console.error('Error guardando venta en SQLite:', error);
+            }
+        }
+        
+        // Actualizar stock
+        await this.actualizarStockProductos('restar', this.carrito);
+        
+        // Registrar ingresos en caja por cada método de pago (usando el neto)
+        for (const pago of pagos) {
+            this.agregarIngreso(pago.neto, `Venta #${venta.id} (${pago.metodo})`, pago.metodo, venta.id.toString());
+        }
+        
+        // Limpiar carrito y cerrar modal
+        this.carrito = [];
+        this.actualizarCarrito();
+        this.cerrarModal('modal-procesar-pago');
+        
+        this.mostrarNotificacion(`✅ Venta #${venta.id} registrada. Total: $${totalPagado.toFixed(2)} (neto: $${totalNeto.toFixed(2)})`);
+        
+        if (confirm('¿Desea imprimir el ticket de venta?')) {
+            this.imprimirTicket(venta);
+        }
+        
+        console.log('Venta finalizada:', venta);
+    }
+    
+    // ==================== IMPRESIÓN DE TICKET (soporta pagos mixtos) ====================
+    imprimirTicket(venta) {
+        const fecha = new Date(venta.fecha);
+        const fechaStr = fecha.toLocaleDateString('es-ES');
+        const horaStr = fecha.toLocaleTimeString('es-ES');
+        
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Ticket de Venta #${venta.id}</title>
+                <style>
+                    body {
+                        font-family: 'Courier New', monospace;
+                        font-size: 12px;
+                        margin: 0;
+                        padding: 20px;
+                        width: 300px;
+                        margin: 0 auto;
+                    }
+                    .ticket {
+                        border: 1px solid #000;
+                        padding: 10px;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 10px;
+                    }
+                    .header h1 {
+                        font-size: 16px;
+                        margin: 0;
+                    }
+                    .header p {
+                        margin: 2px 0;
+                    }
+                    .line {
+                        border-top: 1px dashed #000;
+                        margin: 8px 0;
+                    }
+                    .items {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    .items th, .items td {
+                        text-align: left;
+                        padding: 4px 0;
+                    }
+                    .items th {
+                        border-bottom: 1px solid #000;
+                    }
+                    .total-line {
+                        display: flex;
+                        justify-content: space-between;
+                        margin: 5px 0;
+                    }
+                    .footer {
+                        text-align: center;
+                        margin-top: 10px;
+                        font-size: 10px;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="ticket">
+                    <div class="header">
+                        <h1>TIENDA DE PESCA</h1>
+                        <p>Av. Principal #123</p>
+                        <p>Tel: 555-1234</p>
+                        <p>RUC: 123456789</p>
+                        <div class="line"></div>
+                        <p>Ticket: #${venta.id}</p>
+                        <p>Fecha: ${fechaStr} ${horaStr}</p>
+        `;
+        
+        if (venta.metodo_pago === 'mixto' && venta.pagos) {
+            html += `<p>PAGO MIXTO:</p>`;
+            venta.pagos.forEach(p => {
+                html += `<p>${p.metodo.toUpperCase()}: $${p.monto.toFixed(2)} (neto $${p.neto.toFixed(2)})</p>`;
+            });
+        } else {
+            html += `<p>Método: ${venta.metodo_pago.toUpperCase()}</p>`;
+        }
+        
+        html += `
+                    </div>
+                    <div class="line"></div>
+                    <table class="items">
+                        <thead>
+                            <tr><th>Cant</th><th>Producto</th><th>Precio</th><th>Subtotal</th></tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        venta.productos.forEach(item => {
+            html += `
+                <tr>
+                    <td>${item.cantidad}</td>
+                    <td>${item.nombre}</td>
+                    <td>$${item.precio.toFixed(2)}</td>
+                    <td>$${item.subtotal.toFixed(2)}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                    <div class="line"></div>
+        `;
+        
+        html += `<div class="total-line"><strong>TOTAL:</strong><strong>$${venta.total.toFixed(2)}</strong></div>`;
+        
+        if (venta.comision_monto > 0) {
+            html += `<div class="total-line"><span>Comisiones:</span><span> -$${venta.comision_monto.toFixed(2)}</span></div>`;
+            html += `<div class="total-line"><span>Neto:</span><span>$${venta.total_neto.toFixed(2)}</span></div>`;
+        }
+        
+        if (venta.monto_recibido) {
+            html += `<div class="total-line"><span>Recibido:</span><span>$${venta.monto_recibido.toFixed(2)}</span></div>`;
+            html += `<div class="total-line"><span>Vuelto:</span><span>$${venta.vuelto.toFixed(2)}</span></div>`;
+        }
+        
+        html += `
+                    <div class="line"></div>
+                    <div class="footer">
+                        <p>¡Gracias por su compra!</p>
+                        <p>Visítenos nuevamente</p>
+                    </div>
+                </div>
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 500);
+                    };
+                <\/script>
+            </body>
+            </html>
+        `;
+        
+        const ventanaTicket = window.open('', '_blank');
+        if (ventanaTicket) {
+            ventanaTicket.document.write(html);
+            ventanaTicket.document.close();
+            ventanaTicket.focus();
+        } else {
+            this.mostrarError('No se pudo abrir la ventana de impresión. Verifique que los bloqueadores de ventanas emergentes estén desactivados.');
+        }
+    }
+    
+    // ==================== NUEVAS FUNCIONES: DEVOLUCIONES Y CAMBIOS (sin cambios) ====================
     guardarVentaEnHistorial(venta) {
         const historial = JSON.parse(localStorage.getItem('ventasHistoricas')) || [];
         historial.push(venta);
         localStorage.setItem('ventasHistoricas', JSON.stringify(historial));
     }
-
+    
     async actualizarStockProductos(operacion, items) {
         console.log('Ejecutando actualizarStockProductos', operacion, items);
         const productos = JSON.parse(localStorage.getItem('productos')) || [];
@@ -3455,7 +3982,7 @@ class PuntoVentaApp {
             console.warn('API no disponible para actualizar stock en base de datos');
         }
     }
-
+    
     abrirModalDevolucion() {
         let modal = document.getElementById('modal-devolucion');
         if (!modal) {
@@ -3464,7 +3991,7 @@ class PuntoVentaApp {
             modal.className = 'modal';
             document.body.appendChild(modal);
         }
-
+        
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 800px;">
                 <div class="modal-header">
@@ -3493,25 +4020,25 @@ class PuntoVentaApp {
                 </div>
             </div>
         `;
-
+        
         this.abrirModal('modal-devolucion');
-
+        
         document.getElementById('btn-buscar-venta').addEventListener('click', () => {
             const query = document.getElementById('buscar-venta-input').value.trim();
             this.buscarVentas(query);
         });
-
+        
         document.getElementById('btn-ver-historial-devoluciones').addEventListener('click', () => {
             this.mostrarHistorialDevoluciones();
         });
-
+        
         document.getElementById('buscar-venta-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 document.getElementById('btn-buscar-venta').click();
             }
         });
     }
-
+    
     buscarVentas(query) {
         const historial = JSON.parse(localStorage.getItem('ventasHistoricas')) || [];
         const resultados = historial.filter(venta => {
@@ -3520,17 +4047,17 @@ class PuntoVentaApp {
             const montoMatch = venta.total.toFixed(2).includes(query);
             return idMatch || fechaMatch || montoMatch;
         });
-
+        
         this.mostrarResultadosBusqueda(resultados);
     }
-
+    
     mostrarResultadosBusqueda(resultados) {
         const contenedor = document.getElementById('resultados-busqueda');
         if (resultados.length === 0) {
             contenedor.innerHTML = '<p style="text-align: center; color: #718096;">No se encontraron ventas</p>';
             return;
         }
-
+        
         let html = '<h4 style="margin-bottom: 10px;">Ventas encontradas:</h4>';
         resultados.forEach(venta => {
             html += `
@@ -3546,14 +4073,14 @@ class PuntoVentaApp {
         });
         contenedor.innerHTML = html;
     }
-
+    
     mostrarDetalleVentaDevolucion(venta) {
         const contenedor = document.getElementById('detalle-venta-devolucion');
         let html = `
             <h4 style="margin-bottom: 10px;">Productos de la venta #${venta.id}</h4>
             <div style="max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
         `;
-
+        
         venta.productos.forEach((producto, index) => {
             html += `
                 <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid #e2e8f0;">
@@ -3569,7 +4096,7 @@ class PuntoVentaApp {
                 </div>
             `;
         });
-
+        
         html += `
             </div>
             <div style="margin-top: 20px; display: flex; gap: 10px;">
@@ -3584,16 +4111,16 @@ class PuntoVentaApp {
                 </button>
             </div>
         `;
-
+        
         contenedor.innerHTML = html;
     }
-
+    
     async procesarDevolucion(venta, tipo) {
         try {
             const checkboxes = document.querySelectorAll('#detalle-venta-devolucion input[type="checkbox"]');
             const itemsDevueltos = [];
             let totalReembolso = 0;
-
+            
             checkboxes.forEach((checkbox, index) => {
                 if (checkbox.checked) {
                     const cantidadInput = document.getElementById(`cant-${index}`);
@@ -3601,7 +4128,7 @@ class PuntoVentaApp {
                     const sku = checkbox.dataset.sku;
                     const precio = parseFloat(checkbox.dataset.precio);
                     const max = parseInt(checkbox.dataset.max);
-
+                    
                     if (cantidad > 0 && cantidad <= max) {
                         itemsDevueltos.push({
                             sku: sku,
@@ -3616,18 +4143,18 @@ class PuntoVentaApp {
                     }
                 }
             });
-
+            
             if (itemsDevueltos.length === 0) {
                 alert('Seleccione al menos un producto para devolver');
                 return;
             }
-
+            
             if (!confirm(`¿Confirmar devolución de ${itemsDevueltos.length} producto(s) por $${totalReembolso.toFixed(2)}?`)) {
                 return;
             }
-
+            
             await this.actualizarStockProductos('sumar', itemsDevueltos);
-
+            
             const devolucion = {
                 id: Date.now(),
                 ventaId: venta.id,
@@ -3639,7 +4166,7 @@ class PuntoVentaApp {
             const historialDevoluciones = JSON.parse(localStorage.getItem('devolucionesHistoricas')) || [];
             historialDevoluciones.push(devolucion);
             localStorage.setItem('devolucionesHistoricas', JSON.stringify(historialDevoluciones));
-
+            
             if (tipo === 'reembolso') {
                 this.agregarEgreso(totalReembolso, `Devolución venta #${venta.id}`, venta.metodo_pago, `Devolución`);
                 this.mostrarNotificacion(`✅ Reembolso de $${totalReembolso.toFixed(2)} procesado`);
@@ -3661,7 +4188,7 @@ class PuntoVentaApp {
             }, 500);
         }
     }
-
+    
     mostrarHistorialDevoluciones() {
         const devoluciones = JSON.parse(localStorage.getItem('devolucionesHistoricas')) || [];
         let modal = document.getElementById('modal-historial-devoluciones');
@@ -3671,7 +4198,7 @@ class PuntoVentaApp {
             modal.className = 'modal';
             document.body.appendChild(modal);
         }
-
+        
         let html = `
             <div class="modal-content" style="max-width: 700px;">
                 <div class="modal-header">
@@ -3682,7 +4209,7 @@ class PuntoVentaApp {
                 </div>
                 <div style="padding: 20px; max-height: 500px; overflow-y: auto;">
         `;
-
+        
         if (devoluciones.length === 0) {
             html += '<p style="text-align: center;">No hay devoluciones registradas</p>';
         } else {
@@ -3707,7 +4234,7 @@ class PuntoVentaApp {
                 `;
             });
         }
-
+        
         html += `
                 </div>
                 <div class="form-actions" style="padding: 20px;">
@@ -3715,11 +4242,11 @@ class PuntoVentaApp {
                 </div>
             </div>
         `;
-
+        
         modal.innerHTML = html;
         this.abrirModal('modal-historial-devoluciones');
     }
-
+    
     eliminarDevolucion(id) {
         if (confirm('¿Está seguro de eliminar esta devolución del historial? Esta acción no afecta el stock.')) {
             const historial = JSON.parse(localStorage.getItem('devolucionesHistoricas')) || [];
@@ -3729,8 +4256,8 @@ class PuntoVentaApp {
             this.mostrarHistorialDevoluciones();
         }
     }
-
-    // ==================== FUNCIONES DE LISTA DE PRECIOS ====================
+    
+    // ==================== LISTA DE PRECIOS (sin cambios) ====================
     async abrirListaPrecios() {
         try {
             let modal = document.getElementById('modal-lista-precios');
@@ -3840,12 +4367,12 @@ class PuntoVentaApp {
             this.mostrarError('No se pudo abrir la lista de precios');
         }
     }
-
+    
     filtrarListaPrecios() {
         const searchInput = document.getElementById('search-precios');
         if (searchInput) this.cargarListaPrecios(searchInput.value);
     }
-
+    
     seleccionarProductoLista(sku) {
         this.obtenerProductoPorSKU(sku).then(producto => {
             if (producto) {
@@ -3855,7 +4382,7 @@ class PuntoVentaApp {
             }
         });
     }
-
+    
     async editarProducto(sku) {
         const producto = await this.obtenerProductoPorSKU(sku);
         if (producto) {
@@ -3864,7 +4391,7 @@ class PuntoVentaApp {
             alert('Producto no encontrado');
         }
     }
-
+    
     async cargarListaPrecios(searchTerm = '') {
         try {
             let productos = [];
@@ -3962,277 +4489,55 @@ class PuntoVentaApp {
             document.getElementById('total-stock').textContent = stockTotal;
             
         } catch (error) {
-            // Silenciar error
+            console.error('Error cargando lista de precios:', error);
         }
     }
-
+    
     exportarListaPrecios() {
         alert('Función de exportar CSV en desarrollo');
     }
-
-    // ==================== FINALIZAR VENTA ====================
-    async finalizarVenta() {
-        // Validar que haya productos en el carrito
-        if (this.carrito.length === 0) {
-            this.mostrarError('No hay productos en el carrito');
+    
+    // ==================== FUNCIONES DE CIERRE DE CAJA ADICIONALES (sin cambios) ====================
+    imprimirCierreCaja() {
+        // Obtener datos del resumen actual desde el DOM del modal abierto
+        const resumenDiv = document.getElementById('resumen-cierre-caja');
+        if (!resumenDiv) {
+            alert('No hay resumen de cierre para imprimir');
             return;
         }
-
-        // Obtener referencia al modal de pago
-        const modal = document.getElementById('modal-procesar-pago');
-        if (!modal) return;
-
-        // Obtener método de pago
-        const metodo = this.metodoPagoSeleccionado;
-
-        // Calcular total base (sin descuento/recargo)
-        const totalBase = this.carrito.reduce((sum, item) => sum + item.subtotal, 0);
-
-        // Determinar total final según método (descuento/recargo)
-        let totalFinal = totalBase;
-        if (metodo === 'efectivo') {
-            // Leer descuento aplicado desde el DOM
-            const descuentoValor = parseFloat(document.getElementById('descuento-valor')?.value) || 0;
-            const tipoDescuento = document.querySelector('input[name="tipo-descuento"]:checked')?.value;
-            if (descuentoValor > 0) {
-                if (tipoDescuento === 'porcentaje') {
-                    totalFinal = totalBase * (1 - descuentoValor / 100);
-                } else {
-                    totalFinal = Math.max(0, totalBase - descuentoValor);
-                }
-            }
-        } else if (metodo === 'credito') {
-            // Leer recargo manual
-            const recargoManual = parseFloat(document.getElementById('recargo-manual')?.value) || 0;
-            totalFinal = totalBase * (1 + recargoManual / 100);
-        }
-
-        // Para efectivo, verificar que el monto recibido cubra el total
-        let montoRecibido = null;
-        if (metodo === 'efectivo') {
-            const recibidoInput = document.getElementById('monto-recibido');
-            if (!recibidoInput) {
-                this.mostrarError('No se encontró el campo de monto recibido');
-                return;
-            }
-            montoRecibido = parseFloat(recibidoInput.value) || 0;
-            if (montoRecibido < totalFinal) {
-                this.mostrarError(`El monto recibido ($${montoRecibido.toFixed(2)}) es menor al total ($${totalFinal.toFixed(2)})`);
-                return;
-            }
-        }
-
-        // Aplicar comisión del método de pago
-        const comisionPorcentaje = this.comisiones[metodo] || 0;
-        const comisionMonto = totalFinal * (comisionPorcentaje / 100);
-        const totalNeto = totalFinal - comisionMonto;
-
-        // Crear objeto venta
-        const venta = {
-            id: Date.now(),
-            fecha: new Date().toISOString(),
-            productos: this.carrito.map(item => ({
-                id: item.id,
-                sku: item.sku,
-                nombre: item.nombre,
-                cantidad: item.cantidad,
-                precio: item.precio,
-                subtotal: item.subtotal
-            })),
-            total: totalFinal,          // total que pagó el cliente
-            total_neto: totalNeto,      // total después de comisión
-            comision_porcentaje: comisionPorcentaje,
-            comision_monto: comisionMonto,
-            metodo_pago: metodo,
-            descuento_aplicado: metodo === 'efectivo' ? (totalBase - totalFinal) : 0,
-            recargo_aplicado: metodo === 'credito' ? (totalFinal - totalBase) : 0,
-            monto_recibido: montoRecibido,
-            vuelto: montoRecibido ? (montoRecibido - totalFinal) : 0
-        };
-
-        // Guardar en ventas del día e histórico
-        const ventasDelDia = JSON.parse(localStorage.getItem('ventasDelDia')) || [];
-        ventasDelDia.push(venta);
-        localStorage.setItem('ventasDelDia', JSON.stringify(ventasDelDia));
-
-        this.guardarVentaEnHistorial(venta);
         
-        // --- GUARDAR EN SQLITE ---
-        if (window.api && window.api.createVenta) {
-            try {
-                await window.api.createVenta(venta);
-            } catch (error) {
-                console.error('Error guardando venta en SQLite:', error);
-            }
+        const contenido = resumenDiv.cloneNode(true);
+        const ventana = window.open('', '_blank');
+        if (!ventana) {
+            alert('No se pudo abrir la ventana de impresión. Verifique que los bloqueadores de ventanas emergentes estén desactivados.');
+            return;
         }
-        // -------------------------
-
-        // Actualizar stock (restar cantidades)
-        await this.actualizarStockProductos('restar', this.carrito);
-
-        // Agregar ingreso neto a la caja
-        this.agregarIngreso(totalNeto, `Venta #${venta.id}`, metodo, venta.id.toString());
-
-        // Limpiar carrito y cerrar modal
-        this.carrito = [];
-        this.actualizarCarrito();
-        this.cerrarModal('modal-procesar-pago');
-
-        // Mostrar mensaje de éxito
-        this.mostrarNotificacion(`✅ Venta #${venta.id} registrada. Total: $${totalFinal.toFixed(2)} (neto: $${totalNeto.toFixed(2)})`);
-
-        // Preguntar si desea imprimir ticket
-        if (confirm('¿Desea imprimir el ticket de venta?')) {
-            this.imprimirTicket(venta);
-        }
-
-        console.log('Venta finalizada:', venta);
-    }
-
-    // ==================== IMPRESIÓN DE TICKET ====================
-    imprimirTicket(venta) {
-        // Crear contenido HTML para el ticket
-        const fecha = new Date(venta.fecha);
-        const fechaStr = fecha.toLocaleDateString('es-ES');
-        const horaStr = fecha.toLocaleTimeString('es-ES');
-
-        let html = `
+        
+        const html = `
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
-                <title>Ticket de Venta #${venta.id}</title>
+                <title>Cierre de Caja - ${new Date().toLocaleDateString()}</title>
                 <style>
                     body {
-                        font-family: 'Courier New', monospace;
-                        font-size: 12px;
+                        font-family: 'Segoe UI', Arial, sans-serif;
                         margin: 0;
                         padding: 20px;
-                        width: 300px;
-                        margin: 0 auto;
                     }
-                    .ticket {
-                        border: 1px solid #000;
-                        padding: 10px;
-                    }
-                    .header {
-                        text-align: center;
-                        margin-bottom: 10px;
-                    }
-                    .header h1 {
-                        font-size: 16px;
-                        margin: 0;
-                    }
-                    .header p {
-                        margin: 2px 0;
-                    }
-                    .line {
-                        border-top: 1px dashed #000;
-                        margin: 8px 0;
-                    }
-                    .items {
-                        width: 100%;
-                        border-collapse: collapse;
-                    }
-                    .items th, .items td {
-                        text-align: left;
-                        padding: 4px 0;
-                    }
-                    .items th {
-                        border-bottom: 1px solid #000;
-                    }
-                    .total-line {
-                        display: flex;
-                        justify-content: space-between;
-                        margin: 5px 0;
-                    }
-                    .footer {
-                        text-align: center;
-                        margin-top: 10px;
-                        font-size: 10px;
+                    @media print {
+                        body { margin: 0; padding: 0; }
                     }
                 </style>
             </head>
             <body>
-                <div class="ticket">
-                    <div class="header">
-                        <h1>TIENDA DE PESCA</h1>
-                        <p>Av. Principal #123</p>
-                        <p>Tel: 555-1234</p>
-                        <p>RUC: 123456789</p>
-                        <div class="line"></div>
-                        <p>Ticket: #${venta.id}</p>
-                        <p>Fecha: ${fechaStr} ${horaStr}</p>
-                        <p>Método: ${venta.metodo_pago.toUpperCase()}</p>
-                    </div>
-                    <div class="line"></div>
-                    <table class="items">
-                        <thead>
-                            <tr><th>Cant</th><th>Producto</th><th>Precio</th><th>Subtotal</th></tr>
-                        </thead>
-                        <tbody>
-        `;
-
-        venta.productos.forEach(item => {
-            html += `
-                <tr>
-                    <td>${item.cantidad}</td>
-                    <td>${item.nombre}</td>
-                    <td>$${item.precio.toFixed(2)}</td>
-                    <td>$${item.subtotal.toFixed(2)}</td>
-                </tr>
-            `;
-        });
-
-        html += `
-                        </tbody>
-                    </table>
-                    <div class="line"></div>
-        `;
-
-        if (venta.descuento_aplicado > 0) {
-            html += `<div class="total-line"><span>Descuento:</span><span> -$${venta.descuento_aplicado.toFixed(2)}</span></div>`;
-        }
-        if (venta.recargo_aplicado > 0) {
-            html += `<div class="total-line"><span>Recargo:</span><span> +$${venta.recargo_aplicado.toFixed(2)}</span></div>`;
-        }
-        html += `<div class="total-line"><strong>TOTAL:</strong><strong>$${venta.total.toFixed(2)}</strong></div>`;
-
-        if (venta.comision_monto > 0) {
-            html += `<div class="total-line"><span>Comisión (${venta.comision_porcentaje}%):</span><span> -$${venta.comision_monto.toFixed(2)}</span></div>`;
-            html += `<div class="total-line"><span>Neto:</span><span>$${venta.total_neto.toFixed(2)}</span></div>`;
-        }
-
-        if (venta.monto_recibido) {
-            html += `<div class="total-line"><span>Recibido:</span><span>$${venta.monto_recibido.toFixed(2)}</span></div>`;
-            html += `<div class="total-line"><span>Vuelto:</span><span>$${venta.vuelto.toFixed(2)}</span></div>`;
-        }
-
-        html += `
-                    <div class="line"></div>
-                    <div class="footer">
-                        <p>¡Gracias por su compra!</p>
-                        <p>Visítenos nuevamente</p>
-                    </div>
-                </div>
-                <script>
-                    window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.close(); }, 500);
-                    };
-                </script>
+                ${contenido.outerHTML}
+                <script>window.print(); window.close();<\/script>
             </body>
             </html>
         `;
-
-        const ventanaTicket = window.open('', '_blank');
-        if (ventanaTicket) {
-            ventanaTicket.document.write(html);
-            ventanaTicket.document.close();
-            ventanaTicket.focus();
-        } else {
-            this.mostrarError('No se pudo abrir la ventana de impresión. Verifique que los bloqueadores de ventanas emergentes estén desactivados.');
-        }
+        ventana.document.write(html);
+        ventana.document.close();
     }
 }
 

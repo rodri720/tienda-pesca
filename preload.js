@@ -29,9 +29,35 @@ contextBridge.exposeInMainWorld('api', {
   // ============ GASTOS ============
   createGasto: (gasto) => ipcRenderer.invoke('db:createGasto', gasto),
   getTodayGastos: () => ipcRenderer.invoke('db:getTodayGastos'),
+  getGastosDelDia: () => ipcRenderer.invoke('db:getGastosDelDia'),      // alias
+  getGastosByDate: (fecha) => ipcRenderer.invoke('db:getGastosByDate', fecha),
+  getGastosSummary: (fecha) => ipcRenderer.invoke('db:getGastosSummary', fecha),
+  deleteGasto: (id) => ipcRenderer.invoke('db:deleteGasto', id),
   
   // ============ VENTAS ============
   createVenta: (venta) => ipcRenderer.invoke('db:createVenta', venta),
   getVentasDelDia: () => ipcRenderer.invoke('db:getVentasDelDia'),
-  getGastosDelDia: () => ipcRenderer.invoke('db:getGastosDelDia')
+  getVentasByDate: (fecha) => ipcRenderer.invoke('db:getVentasByDate', fecha),
+  
+  // ============ CIERRES ============
+  createCierre: (cierre) => ipcRenderer.invoke('db:createCierre', cierre),
+  getCierres: (limit) => ipcRenderer.invoke('db:getCierres', limit),
+  
+  // ============ CAJA DIARIA ============
+  saveCajaDiaria: (resumen) => ipcRenderer.invoke('db:saveCajaDiaria', resumen),
+  getCajaDiaria: (fecha) => ipcRenderer.invoke('db:getCajaDiaria', fecha),
+  getHistorialCaja: (limit) => ipcRenderer.invoke('db:getHistorialCaja', limit),
+  
+  // ============ PROVEEDORES ============
+  getAllProveedores: () => ipcRenderer.invoke('db:getAllProveedores'),
+  getProveedorById: (id) => ipcRenderer.invoke('db:getProveedorById', id),
+  createProveedor: (proveedor) => ipcRenderer.invoke('db:createProveedor', proveedor),
+  updateProveedor: (id, proveedor) => ipcRenderer.invoke('db:updateProveedor', id, proveedor),
+  deleteProveedor: (id) => ipcRenderer.invoke('db:deleteProveedor', id),
+  
+  // ============ PAGOS A PROVEEDORES ============
+  getAllPagosProveedores: () => ipcRenderer.invoke('db:getAllPagosProveedores'),
+  getPagosByProveedor: (proveedorId) => ipcRenderer.invoke('db:getPagosByProveedor', proveedorId),
+  createPagoProveedor: (pago) => ipcRenderer.invoke('db:createPagoProveedor', pago),
+  deletePagoProveedor: (id) => ipcRenderer.invoke('db:deletePagoProveedor', id)
 });
