@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test SKUs</title>
+</head>
+<body>
+    <h1>Test SKUs</h1>
+    <button onclick="testAPI()">Test API</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testAPI() {
+            try {
+                const products = await window.api.getAllProducts();
+                const result = document.getElementById('result');
+                
+                let html = '<h3>Productos en DB:</h3>';
+                products.forEach(p => {
+                    html += `
+                        <div style="border:1px solid #ccc; padding:10px; margin:5px;">
+                            <strong>${p.nombre}</strong><br>
+                            SKU: <code>${p.sku || 'NO TIENE SKU'}</code><br>
+                            ID: ${p.id}<br>
+                            Stock: ${p.stock}
+                        </div>
+                    `;
+                });
+                
+                result.innerHTML = html;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+        
+        // Auto-test al cargar
+        document.addEventListener('DOMContentLoaded', testAPI);
+    </script>
+</body>
+</html>
